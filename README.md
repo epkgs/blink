@@ -10,6 +10,11 @@
 5. 内嵌 miniblink 的 DLL，并根据构建环境自动选择 x86/x64 DLL
 
 
+#### 部分未封装的接口，可以使用以下函数直接调用 `miniblink` 的 DLL
+```go
+func (mb *Blink) CallFunc(name string, args ...uintptr) (r1 uintptr, r2 uintptr, err error)
+```
+
 ## 开发环境
 - GO 1.22
 
