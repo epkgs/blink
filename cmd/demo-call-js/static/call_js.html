@@ -1,0 +1,111 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8"/>
+    <title>demo</title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+            font-family: 微软雅黑;
+        }
+
+        body {
+            padding-bottom: 100px;
+        }
+
+        fieldset {
+            margin: 15px;
+            padding: 15px;
+            padding-top: 5px;
+        }
+
+        .sj-1 {
+            padding-left: 80px;
+        }
+
+        .sj-2 {
+            padding-left: 120px;
+        }
+
+        fieldset > ul {
+            background-color: aquamarine;
+            padding-bottom: 10px;
+        }
+
+        fieldset > ol {
+            background-color: lightblue;
+        }
+
+        fieldset > ul > li, fieldset > ol > li {
+            display: block;
+            line-height: 28px;
+            list-style: none;
+            padding-left: 40px;
+            font-size: 15px;
+        }
+
+        fieldset > ul > li:first-child, fieldset > ol > li:first-child {
+            padding-left: 15px;
+            font-size: 18px;
+        }
+    </style>
+    <script>
+        function func_1(name, age) {
+            console.log("name=" + name + ", age=" + age)
+        }
+
+        function func_2() {
+            return "李四";
+        }
+
+        function func_3() {
+            return {name: "张三", age: 18};
+        }
+    </script>
+</head>
+<body>
+<fieldset>
+    <legend>带参数的</legend>
+    <ul>
+        <li>JS定义</li>
+        <li>function func_1(name, age) {</li>
+        <li class="sj-1">console.log("name=" + name + ", age=" + age);</li>
+        <li>}</li>
+    </ul>
+    <ol>
+        <li>Go调用</li>
+        <li>CallJsFunc("func_1", "小张", 15);</li>
+    </ol>
+</fieldset>
+<fieldset>
+    <legend>基础数据类型返回值</legend>
+    <ul>
+        <li>JS定义</li>
+        <li>function func_2() {</li>
+        <li class="sj-1">return "李四";</li>
+        <li>}</li>
+    </ul>
+    <ol>
+        <li>Go调用</li>
+        <li>f2rs := CallJsFunc("func_2");</li>
+        <li>fmt.Println("func_2 result is", f2rs);</li>
+    </ol>
+</fieldset>
+<fieldset>
+    <legend>非基础类型返回值</legend>
+    <ul>
+        <li>JS定义</li>
+        <li>function func_3() {</li>
+        <li class="sj-1">return { name: "张三", age: 18 };</li>
+        <li>}</li>
+    </ul>
+    <ol>
+        <li>Go调用</li>
+        <li>f3rs := CallJsFunc("func_3").(map[string]any)</li>
+        <li>fmt.Println("func_3 result is", f4rs)</li>
+    </ol>
+</fieldset>
+</body>
+</html>

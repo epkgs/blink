@@ -1,0 +1,11 @@
+go.sum
+go.work.sum
+/LocalStorage
+/cookie.dat
+/vendor
+__debug_bin*.exe
+/blink_x32.dll
+/blink_x64.dll
+/*.exe
+*.syso
+/icon_*.ico
