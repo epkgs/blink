@@ -1,1 +1,3 @@
-*.go linguist-language=go
+internal/devtools/front_end/**/* linguist-vendored=true
+wke.h linguist-vendored=true
+*.go linguist-vendored=false
