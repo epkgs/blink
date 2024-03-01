@@ -26,14 +26,14 @@ go build \
   -tags 'release' \
   -ldflags '-w -s -H=windowsgui' \
   -o miniBlink.exe \
-  ./cmd/demo-baidu
+  ./samples/demo-baidu
 
 # 打包32位程序
 GOARCH=386 go build \
   -tags 'release' \
   -ldflags '-w -s -H=windowsgui' \
   -o miniBlink.exe \
-  ./cmd/demo-baidu
+  ./samples/demo-baidu
 
 ```
 
