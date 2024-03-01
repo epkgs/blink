@@ -10,7 +10,7 @@ import (
 )
 
 type BindFunctionCallback func(es JsExecState)
-type JsCallback func(args any)
+type JsCallback func(result any)
 
 const JS_MSG_FUNC = "__mb_message"
 
