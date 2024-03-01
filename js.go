@@ -55,7 +55,7 @@ func (js *JS) bindGO() {
 			return
 		}
 
-		callback(&msg.Data)
+		callback(msg.Data)
 	})
 }
 

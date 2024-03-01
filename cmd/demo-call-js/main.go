@@ -34,19 +34,21 @@ func main() {
 		fmt.Printf("js console: %s\n", message)
 	})
 
-	// ! CallJsFunc 的实现方式比较 dirty，且实用性不高。请用 AddEventListener 和 RunJS 代替
 	view.OnDocumentReady(func(frame blink.WkeWebFrameHandle) {
 		//调用func_1
-		view.CallJsFunc("func_1", "张三", 18)
+		view.CallJsFunc(nil, "func_1", "张三", 18)
 
 		//获取func_2返回的基础数据类型
-		f2rs := view.CallJsFunc("func_2")
-		fmt.Printf("func_2 result is %s\n", f2rs.(string))
+		view.CallJsFunc(func(result any) {
+
+			fmt.Printf("func_2 result is %s\n", result.(string))
+		}, "func_2")
 
 		//获取func_4返回的非基本数据类型
-		f3rs := view.CallJsFunc("func_3").(map[string]any)
-		bytes, _ := json.Marshal(f3rs)
-		fmt.Printf("func_3 result is %s\n", string(bytes))
+		view.CallJsFunc(func(result any) {
+			bytes, _ := json.Marshal(result.(map[string]any))
+			fmt.Printf("func_3 result is %s\n", string(bytes))
+		}, "func_3")
 	})
 
 	view.OnDestroy(func() {

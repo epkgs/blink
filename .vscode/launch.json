@@ -10,7 +10,7 @@
       "request": "launch",
       "mode": "auto",
       "cwd": "${workspaceFolder}",
-      "program": "./demo/call-js"
+      "program": "${fileDirname}"
     }
   ]
 }

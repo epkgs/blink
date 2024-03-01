@@ -280,17 +280,53 @@ func (v *View) RunJS(script string) {
 
 }
 
-func (v *View) CallJsFunc(funcName string, args ...any) any {
-	es := v.mb.JS.GlobalExec(v.Hwnd)
-	var ps []JsValue
-	for _, arg := range args {
-		ps = append(ps, v.mb.JS.ToJsValue(es, arg))
+func (v *View) CallJsFunc(callback func(result any), funcName string, args ...any) {
+
+	key := RandString(8)
+
+	script := `
+	const rootWin = window.top || window.parent || window;
+	const tunnel = rootWin['%s'] || (function(e) { });
+	const msg = %s;
+	msg.data = %s(...msg.data);
+	tunnel(JSON.stringify(msg));
+	`
+
+	msg := &JsMessage{
+		Key:  key,
+		Data: args,
 	}
 
-	fn := v.mb.JS.GetGlobal(es, funcName)
-	rs := v.mb.JS.Call(es, fn, v.mb.JS.Undefined(), ps)
+	if args == nil {
+		msg.Data = []any{}
+	}
 
-	return v.mb.JS.ToGoValue(es, rs)
+	jsonBytes, err := json.Marshal(&msg)
+
+	if err != nil {
+		return
+	}
+
+	jsonTxt := string(jsonBytes)
+
+	script = fmt.Sprintf(script,
+		JS_MSG_FUNC,
+		jsonTxt,
+		funcName,
+	)
+
+	if callback != nil {
+
+		var jsCallback JsCallback = func(result any) {
+			callback(result)
+			v.mb.JS.removeCallback(key)
+		}
+
+		// 注册callback
+		v.mb.JS.AddCallback(key, jsCallback)
+	}
+
+	v.RunJS(script)
 }
 
 func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) {
