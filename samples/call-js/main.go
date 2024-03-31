@@ -14,8 +14,8 @@ func main() {
 	defer app.Free()
 
 	pwd, _ := os.Getwd()
-	dir := filepath.Join(pwd, "samples", "demo-call-js", "static") // ! 默认是从项目根目录开始检索，由于demo目录不是项目根目录，所以需要配置绝对路径
-	blink.Resource.BindDir("local", dir)                           // 将本地文件绑定到 FileSystem
+	dir := filepath.Join(pwd, "samples", "call-js", "static") // ! 默认是从项目根目录开始检索，由于demo目录不是项目根目录，所以需要配置绝对路径
+	blink.Resource.BindDir("local", dir)                      // 将本地文件绑定到 FileSystem
 
 	//一个普通的窗体
 	view := app.CreateWebWindowPopup(blink.WkeRect{
@@ -44,7 +44,7 @@ func main() {
 			fmt.Printf("func_2 result is %s\n", result.(string))
 		}, "func_2")
 
-		//获取func_4返回的非基本数据类型
+		//获取func_3返回的非基本数据类型
 		view.CallJsFunc(func(result any) {
 			bytes, _ := json.Marshal(result.(map[string]any))
 			fmt.Printf("func_3 result is %s\n", string(bytes))
