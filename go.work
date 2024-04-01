@@ -1,0 +1,9 @@
+go 1.22.0
+
+use (
+	.
+	./samples/baidu
+	./samples/call-js
+	./samples/no-border
+	./samples/transparent
+)
