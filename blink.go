@@ -1,6 +1,7 @@
 package blink
 
 import (
+	"io"
 	"os"
 	"runtime"
 	"sync"
@@ -36,15 +37,14 @@ func loadDLL(fullPath string) *windows.DLL {
 	// 放入闭包，使其可以被释放
 	func() {
 
-		file := "blink_x32.dll"
-
-		if env.isSYS64 {
-			file = "blink_x64.dll"
-		}
-
-		data, err := dll.Asset(file)
+		file, err := dll.FS.Open("blink.dll")
 		if err != nil {
 			panic("找不到内嵌dll，err: " + err.Error())
+		}
+
+		data, err := io.ReadAll(file)
+		if err != nil {
+			panic("读取内联DLL出错，err: " + err.Error())
 		}
 
 		newFile, err := os.Create(fullPath)
