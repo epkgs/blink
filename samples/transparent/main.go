@@ -1,16 +1,22 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"os"
 
 	blink "github.com/epkgs/mini-blink"
 )
 
+//go:embed static
+var static embed.FS
+
 func main() {
 	app := blink.NewApp()
 	defer app.Free()
 
-	blink.Resource.Bind("local", "static") // 将本地文件绑定到 FileSystem
+	res, _ := fs.Sub(static, "static")
+	blink.Resource.Bind("local", res) // 将内嵌文件夹绑定到 FileSystem
 
 	view := app.CreateWebWindowTransparent(blink.WkeRect{
 		W: 300, H: 300,
