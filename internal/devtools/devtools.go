@@ -1,15 +1,11 @@
 package devtools
 
-import "io"
+import (
+	"embed"
+	"io/fs"
+)
 
-func Asset(file string) ([]byte, error) {
-	f, e := AssetFile().Open(file)
+//go:embed front_end/*
+var frontEnd embed.FS
 
-	if e != nil {
-		return nil, e
-	}
-
-	defer f.Close()
-
-	return io.ReadAll(f)
-}
+var FS, _ = fs.Sub(frontEnd, "front_end")

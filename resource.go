@@ -1,6 +1,8 @@
 package blink
 
 import (
+	"embed"
+	fs "io/fs"
 	"net/http"
 	netUrl "net/url"
 	"os"
@@ -15,8 +17,15 @@ func NewResourceLoader() *ResourceLoader {
 	return &loader
 }
 
-// bin-data
-func (res *ResourceLoader) Bind(domain string, fs http.FileSystem) {
+// Bind fileSystem to domain
+//
+// FileSystem accept type of below
+//   - embed.FS
+//   - fs.FS
+//   - fs.SubFS
+//   - http.FileSystem
+//   - string of directory (The resource will not embed, you should copy the files to the target build directory)
+func (res *ResourceLoader) Bind(domain string, fileSystem any) {
 	uri, err := netUrl.Parse(domain)
 	if err != nil {
 		return
@@ -25,20 +34,22 @@ func (res *ResourceLoader) Bind(domain string, fs http.FileSystem) {
 	if uri.Host == "" {
 		dm = uri.Path
 	}
-	(*res)[dm] = fs
-}
 
-// 本地资源
-func (res *ResourceLoader) BindDir(domain string, dir string) {
-	uri, err := netUrl.Parse(domain)
-	if err != nil {
-		return
+	switch v := fileSystem.(type) {
+	case http.FileSystem:
+		(*res)[dm] = v
+	case embed.FS:
+		(*res)[dm] = http.FS(v)
+	case string:
+		(*res)[dm] = http.FS(os.DirFS(v))
+	case fs.SubFS:
+		(*res)[dm] = http.FS(v)
+	case fs.FS:
+		(*res)[dm] = http.FS(v)
+	default:
+		panic("fs type error, only accept: http.FileSystem, embed.FS, fs.FS, fs.SubFS or string of directory")
 	}
-	dm := uri.Host
-	if uri.Host == "" {
-		dm = uri.Path
-	}
-	(*res)[dm] = http.FS(os.DirFS(dir))
+
 }
 
 func (res *ResourceLoader) Unbind(domain string) {
