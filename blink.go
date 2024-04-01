@@ -18,6 +18,8 @@ type Blink struct {
 	Config *Config
 	JS     *JS
 
+	Resource *ResourceLoader
+
 	dll   *windows.DLL
 	procs map[string]*windows.Proc
 
@@ -72,7 +74,8 @@ func NewApp(setups ...func(*Config)) *Blink {
 	config := NewConfig(setups...)
 
 	blink := &Blink{
-		Config: config,
+		Config:   config,
+		Resource: NewResourceLoader(),
 
 		dll:   loadDLL(config),
 		procs: make(map[string]*windows.Proc),

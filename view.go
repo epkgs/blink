@@ -158,7 +158,7 @@ func (v *View) DispatchMessage(msg *win.MSG) bool {
 func (v *View) registerFileSystem() {
 	v.OnLoadUrlBegin(func(url string, job WkeNetJob) bool {
 
-		f := Resource.GetFile(url)
+		f := v.mb.Resource.GetFile(url)
 
 		// 找不到文件
 		if f == nil {

@@ -18,7 +18,7 @@ func main() {
 	defer app.Free()
 
 	res, _ := fs.Sub(static, "static")
-	blink.Resource.Bind("local", res) // 将内嵌文件夹绑定到 FileSystem
+	app.Resource.Bind("local", res) // 将内嵌文件夹绑定到 FileSystem
 
 	//一个普通的窗体
 	view := app.CreateWebWindowPopup(blink.WkeRect{

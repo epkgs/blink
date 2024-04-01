@@ -10,8 +10,6 @@ import (
 
 type ResourceLoader map[string]http.FileSystem
 
-var Resource = NewResourceLoader()
-
 func NewResourceLoader() *ResourceLoader {
 	loader := make(ResourceLoader)
 	return &loader

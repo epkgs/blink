@@ -8,8 +8,8 @@ import (
 
 func (v *View) ShowDevTools() {
 
-	if !Resource.IsExist("__devtools__") {
-		Resource.Bind("__devtools__", devtools.FS)
+	if !v.mb.Resource.IsExist("__devtools__") {
+		v.mb.Resource.Bind("__devtools__", devtools.FS)
 	}
 
 	var callback WkeOnShowDevtoolsCallback = func(hwnd WkeHandle, param uintptr) uintptr {
