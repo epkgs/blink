@@ -6,55 +6,63 @@ import (
 )
 
 type Config struct {
-	// 32位dll文件名
-	dll32 string
-	// 64位dll文件名
-	dll64 string
-	// (运行文件夹 / 临时文件夹) 注意：需要以 / 结尾
-	runtimePath string
-	// 设置cookie的本地文件目录。默认是当前目录。cookies存在当前目录的“cookie.dat”里
+	// 临时文件夹，用于释放 DLL 以及其他临时文件
+	tempPath string
+	// dll文件路径，非绝对路径将在临时文件夹内创建
+	dll string
+	// 设置storage本地文件目录
 	storagePath string
-	// 设置cookie的全路径+文件名，如“c:\mb\cookie.dat”
+	// 设置cookie文件名
 	cookieFile string
 }
 
-func NewConfig() *Config {
+func NewConfig(setups ...func(*Config)) *Config {
 
-	runtimePath, err := os.Getwd()
-	if err != nil {
-		runtimePath = "."
+	conf := &Config{
+		tempPath:    os.TempDir(),
+		dll:         "blink_" + AppID + ".dll",
+		storagePath: "LocalStorage_" + AppID,
+		cookieFile:  "cookie_" + AppID + ".dat",
 	}
 
-	err = os.MkdirAll(runtimePath, 0644)
-	if err != nil {
-		pwd, err := os.Getwd()
-		if err != nil {
-			panic("运行目录无权限！")
-		}
-		runtimePath = pwd
+	for _, setup := range setups {
+		setup(conf)
 	}
 
-	return &Config{
-		dll32:       "blink_x32.dll",
-		dll64:       "blink_x64.dll",
-		storagePath: "LocalStorage",
-		cookieFile:  "cookie.dat",
-		runtimePath: runtimePath,
+	return conf
+}
+
+func WithConfigTempPath(path string) func(*Config) {
+	return func(conf *Config) {
+		conf.tempPath = path
+	}
+}
+
+func WithConfigDll(dll string) func(*Config) {
+	return func(conf *Config) {
+		conf.dll = dll
+	}
+}
+
+func WithConfigStoragePath(path string) func(*Config) {
+	return func(conf *Config) {
+		conf.storagePath = path
+	}
+}
+
+func WithConfigCookieFile(path string) func(*Config) {
+	return func(conf *Config) {
+		conf.cookieFile = path
 	}
 }
 
 func (conf *Config) GetDllFilePath() string {
 
-	dll := conf.dll32
-	if env.isSYS64 {
-		dll = conf.dll64
+	if filepath.IsAbs(conf.dll) {
+		return conf.dll
 	}
 
-	if filepath.IsAbs(dll) {
-		return dll
-	}
-
-	return filepath.Join(conf.runtimePath, dll)
+	return filepath.Join(conf.tempPath, conf.dll)
 }
 
 func (conf *Config) GetStoragePath() string {
@@ -63,7 +71,7 @@ func (conf *Config) GetStoragePath() string {
 		return conf.storagePath
 	}
 
-	return filepath.Join(conf.runtimePath, conf.storagePath)
+	return filepath.Join(conf.tempPath, conf.storagePath)
 }
 
 func (conf *Config) GetCookieFilePath() string {
@@ -72,5 +80,5 @@ func (conf *Config) GetCookieFilePath() string {
 		return conf.cookieFile
 	}
 
-	return filepath.Join(conf.runtimePath, conf.cookieFile)
+	return filepath.Join(conf.tempPath, conf.cookieFile)
 }

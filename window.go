@@ -224,7 +224,7 @@ func (w *Window) loadIconFromBytes(iconData []byte) (iconHandle win.HANDLE, err 
 	}
 
 	//缓存中没有,则释放到本地目录
-	iconFilePath := filepath.Join(w.mb.Config.runtimePath, "icon_"+dataHash+".ico")
+	iconFilePath := filepath.Join(w.mb.Config.tempPath, "icon_"+dataHash+".ico")
 	if _, err := os.Stat(iconFilePath); os.IsNotExist(err) {
 		if err := os.WriteFile(iconFilePath, iconData, 0644); err != nil {
 			return 0, errors.New("无法创建临时icon文件: " + err.Error())
