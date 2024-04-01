@@ -20,6 +20,12 @@ func (mb *Blink) CallFunc(name string, args ...uintptr) (r1 uintptr, r2 uintptr,
 
 
 ## 打包
+
+### 打包标签:
+- `release` 打包程序，不包含调试信息
+- `slim` 不内嵌miniblink的dll，需要手动放入程序根目录或系统默认路径
+
+### 示例
 ```bash
 # 默认打包
 go build \

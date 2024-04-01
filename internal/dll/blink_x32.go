@@ -1,4 +1,4 @@
-//go:build 386
+//go:build !slim && 386
 
 package dll
 

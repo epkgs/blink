@@ -5,8 +5,6 @@ type Env struct {
 	isDebug bool
 }
 
-var AppID = RandString(8)
-
 func (env *Env) IsSYS64() bool {
 	return env.isSYS64
 }

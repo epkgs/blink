@@ -27,19 +27,21 @@ type Blink struct {
 	bootScripts []string
 }
 
-func loadDLL(fullPath string) *windows.DLL {
+func loadDLL(conf *Config) *windows.DLL {
 
-	// DLL 存在
-	if _, err := os.Stat(fullPath); err == nil {
-		return windows.MustLoadDLL(fullPath)
+	// 尝试在默认目录里加载 DLL
+	if loaded, err := windows.LoadDLL(DLL_FILE); err == nil {
+		return loaded
 	}
+
+	fullPath := conf.GetDllFilePath()
 
 	// 放入闭包，使其可以被释放
 	func() {
 
-		file, err := dll.FS.Open("blink.dll")
+		file, err := dll.FS.Open(DLL_FILE)
 		if err != nil {
-			panic("找不到内嵌dll，err: " + err.Error())
+			panic("无法从默认路径或内嵌资源里找到 blink.dll，err: " + err.Error())
 		}
 
 		data, err := io.ReadAll(file)
@@ -65,20 +67,14 @@ func loadDLL(fullPath string) *windows.DLL {
 	return windows.MustLoadDLL(fullPath)
 }
 
-func NewApp() *Blink {
+func NewApp(setups ...func(*Config)) *Blink {
 
-	config := NewConfig()
-
-	return NewAppWithConfig(config)
-
-}
-
-func NewAppWithConfig(config *Config) *Blink {
+	config := NewConfig(setups...)
 
 	blink := &Blink{
 		Config: config,
 
-		dll:   loadDLL(config.GetDllFilePath()),
+		dll:   loadDLL(config),
 		procs: make(map[string]*windows.Proc),
 
 		views:   make(map[WkeHandle]*View),
