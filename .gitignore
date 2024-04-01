@@ -9,3 +9,4 @@ __debug_bin*.exe
 /*.exe
 *.syso
 /icon_*.ico
+/.idea
