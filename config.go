@@ -18,15 +18,21 @@ type Config struct {
 
 func NewConfig(setups ...func(*Config)) *Config {
 
+	tempPath := filepath.Join(os.TempDir(), "mini-blink")
+
 	conf := &Config{
-		tempPath:    os.TempDir(),
-		dll:         "blink_" + AppID + ".dll",
-		storagePath: "LocalStorage_" + AppID,
-		cookieFile:  "cookie_" + AppID + ".dat",
+		tempPath:    tempPath,
+		dll:         "blink.dll",
+		storagePath: "LocalStorage",
+		cookieFile:  "cookie.dat",
 	}
 
 	for _, setup := range setups {
 		setup(conf)
+	}
+
+	if err := os.MkdirAll(conf.tempPath, 0644); err != nil {
+		panic("临时文件夹不存在，且创建不成功，请确认文件夹权限。")
 	}
 
 	return conf
