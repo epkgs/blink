@@ -174,8 +174,8 @@ func (w *Window) Restore() {
 	w.isMaximized = false
 }
 
-func (w *Window) Move() {
-	win.ReleaseCapture()
+func (w *Window) EnableDragging() {
+	win.ReleaseCapture() // 松开鼠标控制
 	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MOVE|win.HTCAPTION), 0)
 }
 

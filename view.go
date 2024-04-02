@@ -441,7 +441,7 @@ func (v *View) listenCaptionDrag() {
 		if v.Window.IsMaximized() {
 			return
 		}
-		v.Window.Move()
+		v.Window.EnableDragging()
 	}, preScript)
 }
 
