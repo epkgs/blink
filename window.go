@@ -159,6 +159,7 @@ func (w *Window) Minimize() {
 }
 
 func (w *Window) Maximize() {
+	// TODO: 修复无边框窗口最大化时会遮挡任务栏的BUG
 	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MAXIMIZE), 0)
 	w.isMaximized = true
 }
