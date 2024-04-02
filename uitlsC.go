@@ -2,6 +2,7 @@ package blink
 
 import (
 	"syscall"
+	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -88,6 +89,10 @@ func StringToWcharU16Ptr(s string) *uint16 {
 		*p = 0
 	}
 	return p
+}
+
+func StringToU16Arr(s string) []uint16 {
+	return utf16.Encode([]rune(s))
 }
 
 func PtrWCharToString(p uintptr) string {

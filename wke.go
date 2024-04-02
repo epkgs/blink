@@ -102,6 +102,7 @@ type WkeLoadUrlFailCallback func(view WkeHandle, param, url string, job WkeNetJo
 type WkeDocumentReady2Callback func(view WkeHandle, param uintptr, frame WkeWebFrameHandle) (voidRes uintptr)
 type WkeOnShowDevtoolsCallback func(view WkeHandle, param uintptr) (voidRes uintptr)
 type WkeTitleChangedCallback func(view WkeHandle, param uintptr, title WkeString) (voidRes uintptr)
+type WkeDownloadCallback func(view WkeHandle, param uintptr, url uintptr) (voidRes uintptr)
 
 type WkeCursorType int
 

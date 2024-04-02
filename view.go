@@ -18,6 +18,7 @@ type OnLoadUrlEndCallback func(url string, job WkeNetJob, buf []byte)
 type OnDocumentReadyCallback func(frame WkeWebFrameHandle)
 type OnDidCreateScriptContextCallback func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int)
 type OnTitleChangedCallback func(title string)
+type OnDownloadCallback func(url string)
 
 type View struct {
 	Hwnd   WkeHandle
@@ -31,6 +32,7 @@ type View struct {
 	onLoadUrlEndCallbacks    []OnLoadUrlEndCallback
 	onDocumentReadyCallbacks []OnDocumentReadyCallback
 	onTitleChangedCallbacks  []OnTitleChangedCallback
+	onDownloadCallbacks      []OnDownloadCallback
 }
 
 func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*View) *View {
@@ -51,6 +53,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 		onLoadUrlEndCallbacks:    []OnLoadUrlEndCallback{},
 		onDocumentReadyCallbacks: []OnDocumentReadyCallback{},
 		onTitleChangedCallbacks:  []OnTitleChangedCallback{},
+		onDownloadCallbacks:      []OnDownloadCallback{},
 	}
 
 	view.Window = newWindow(mb, view, windowType)
@@ -65,6 +68,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 	view.registerOnLoadUrlEnd()
 	view.registerOnDocumentReady()
 	view.registerOnTitleChanged()
+	view.registerOnDownload()
 
 	view.listenMinBtnClick()
 	view.listenMaxBtnClick()
@@ -467,4 +471,19 @@ func (v *View) registerOnTitleChanged() {
 	}
 
 	v.mb.CallFunc("wkeOnTitleChanged", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+}
+
+func (v *View) OnDownload(callback OnDownloadCallback) {
+	v.onDownloadCallbacks = append(v.onDownloadCallbacks, callback)
+}
+func (v *View) registerOnDownload() {
+	var cb WkeDownloadCallback = func(view WkeHandle, param uintptr, url uintptr) (voidRes uintptr) {
+		link := PtrToString(url)
+		for _, callback := range v.onDownloadCallbacks {
+			go callback(link)
+		}
+		return
+	}
+
+	v.mb.CallFunc("wkeOnDownload", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 }
