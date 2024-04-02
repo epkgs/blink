@@ -54,7 +54,7 @@ func (d *Downloader) Download(url string) {
 
 	d.lastJobId++
 
-	job.logInfo("创建成功")
+	job.logInfo("创建任务 %s", url)
 
 	go func() {
 		if target, ok := openSaveFileDialog(job.target); ok {
