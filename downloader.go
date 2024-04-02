@@ -18,6 +18,8 @@ import (
 	"github.com/lxn/win"
 )
 
+var mutex sync.Mutex // 用于确保写入文件的顺序
+
 type Downloader struct {
 	lastJobId uint64
 	threads   int // 下载线程
@@ -105,7 +107,7 @@ func (job *DownloadJob) singleThreadDownload() error {
 	defer resp.Body.Close()
 
 	// 打开文件准备写入
-	file, err := os.OpenFile(job.target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.Create(job.target)
 	if err != nil {
 		return err
 	}
@@ -117,6 +119,13 @@ func (job *DownloadJob) singleThreadDownload() error {
 
 func (job *DownloadJob) multiThreadDownload() error {
 
+	// 打开文件准备写入
+	file, err := os.Create(job.target)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
 	threads := job.Downloader.threads
 
 	// 计算每个线程的分块大小
@@ -124,19 +133,29 @@ func (job *DownloadJob) multiThreadDownload() error {
 	errs := []error{}
 
 	var wg sync.WaitGroup
+
 	for i := 0; i < threads; i++ {
-		startByte := int64(i) * chunkSize
-		endByte := startByte + chunkSize - 1
+		start := int64(i) * chunkSize
+		end := start + chunkSize - 1
+
+		// 如果是最后一个部分，加上余数
 		if i == threads-1 {
-			endByte = job.size - 1 // 最后一个线程下载到文件末尾
+			end += job.size - 1
 		}
 
 		wg.Add(1)
+
 		go func() {
-			if err := job.downloadChunk(i, &wg, startByte, endByte); err != nil {
+
+			if err := job.downloadChunk(file, start, end); err != nil {
 				errs = append(errs, err)
 			}
+
+			job.logInfo("切片 %d 下载完成", i+1)
+			wg.Done()
+
 		}()
+
 	}
 
 	wg.Wait() // 等待所有goroutine完成
@@ -149,11 +168,7 @@ func (job *DownloadJob) multiThreadDownload() error {
 }
 
 // downloadChunk 下载文件的单个分块
-func (job *DownloadJob) downloadChunk(index int, wg *sync.WaitGroup, startByte, endByte int64) error {
-	defer func() {
-		job.logInfo("切片 %d 下载完成", index+1)
-		wg.Done()
-	}()
+func (job *DownloadJob) downloadChunk(file *os.File, start, end int64) error {
 
 	req, err := http.NewRequest("GET", job.url, nil)
 	if err != nil {
@@ -161,7 +176,7 @@ func (job *DownloadJob) downloadChunk(index int, wg *sync.WaitGroup, startByte, 
 	}
 
 	// 设置Range头实现断点续传
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", startByte, endByte))
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
@@ -173,12 +188,14 @@ func (job *DownloadJob) downloadChunk(index int, wg *sync.WaitGroup, startByte, 
 		return errors.New("server doesn't support Range requests")
 	}
 
-	// 打开文件准备写入
-	file, err := os.OpenFile(job.target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
+	// 锁定互斥锁以安全地写入文件
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	// 写入文件的当前位置
+	if _, err = file.Seek(start, io.SeekStart); err != nil {
 		return err
 	}
-	defer file.Close()
 
 	// 将HTTP响应的Body内容写入到文件中
 	_, err = io.Copy(file, resp.Body)
