@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/lxn/win"
 )
@@ -68,6 +69,20 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	switch message {
 	case win.WM_ENTERSIZEMOVE:
 		w.udpateCursor()
+	case win.WM_GETMINMAXINFO:
+		// 修正无边框窗口，最大化时的尺寸问题，避免遮挡任务栏
+		if w.isMaximized && w.windowType == WKE_WINDOW_TYPE_TRANSPARENT {
+			lpmmi := (*win.MINMAXINFO)(unsafe.Pointer(lparam))
+			hMonitor := win.MonitorFromWindow(win.HWND(w.Hwnd), win.MONITOR_DEFAULTTONEAREST)
+			var monitorInfo win.MONITORINFO
+			monitorInfo.CbSize = uint32(unsafe.Sizeof(monitorInfo))
+			win.GetMonitorInfo(hMonitor, &monitorInfo)
+
+			lpmmi.PtMaxPosition.X = monitorInfo.RcWork.Left
+			lpmmi.PtMaxPosition.Y = monitorInfo.RcWork.Top
+			lpmmi.PtMaxSize.X = monitorInfo.RcWork.Right - monitorInfo.RcWork.Left
+			lpmmi.PtMaxSize.Y = monitorInfo.RcWork.Bottom - monitorInfo.RcWork.Top
+		}
 	}
 
 	return res
@@ -159,7 +174,6 @@ func (w *Window) Minimize() {
 }
 
 func (w *Window) Maximize() {
-	// TODO: 修复无边框窗口最大化时会遮挡任务栏的BUG
 	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MAXIMIZE), 0)
 	w.isMaximized = true
 }
