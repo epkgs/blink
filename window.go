@@ -49,7 +49,7 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 		Hwnd:       view.GetWindowHandle(),
 	}
 
-	window._oldWndProc = win.SetWindowLongPtr(win.HWND(window.Hwnd), win.GWL_WNDPROC, uintptr(CallbackToPtr(window.hookWindowProc)))
+	window._oldWndProc = win.SetWindowLongPtr(win.HWND(window.Hwnd), win.GWL_WNDPROC, CallbackToPtr(window.hookWindowProc))
 
 	window.view.OnTitleChanged(func(title string) {
 		if window.fixedTitle {
