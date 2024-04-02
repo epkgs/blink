@@ -6,6 +6,7 @@ import (
 
 func _log(format string, vars ...any) {
 	fmt.Printf(format, vars...)
+	fmt.Print("\n")
 }
 
 func logInfo(format string, vars ...any) {

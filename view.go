@@ -77,6 +77,11 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 
 	view.addToPool()
 
+	// 添加默认下载操作
+	view.OnDownload(func(url string) {
+		view.mb.Downloader.Download(url)
+	})
+
 	return view
 }
 

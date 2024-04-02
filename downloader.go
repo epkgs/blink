@@ -19,12 +19,14 @@ import (
 )
 
 type Downloader struct {
-	threads int // 下载线程
+	lastJobId uint64
+	threads   int // 下载线程
 }
 
 type DownloadJob struct {
 	Downloader *Downloader
 
+	id           uint64
 	url          string
 	target       string
 	size         int64
@@ -33,48 +35,64 @@ type DownloadJob struct {
 
 func NewDownloader(threads int) *Downloader {
 	return &Downloader{
-		threads: threads,
+		lastJobId: 1,
+		threads:   threads,
 	}
 }
 
-func (d *Downloader) Download(url string) error {
+func (d *Downloader) Download(url string) {
 	job := &DownloadJob{
 
 		Downloader: d,
 
+		id:           d.lastJobId,
 		url:          url,
 		target:       getFileNameByUrl(url),
 		size:         0,
 		supportRange: false,
 	}
 
-	if target, ok := openSaveFileDialog(job.target); ok {
-		job.target = target
-	} else {
-		return errors.New("用户取消保存")
-	}
+	d.lastJobId++
 
-	logInfo("创建下载任务: ", url)
+	job.logInfo("创建成功")
 
-	if err := job.fetchInfo(); err != nil {
-		return errors.New("获取文件信息出错：" + err.Error())
-	}
-
-	if job.supportRange {
-		logInfo("支持断点续传，线程：", job.Downloader.threads)
-		if err := job.multiThreadDownload(); err != nil {
-			return err
+	go func() {
+		if target, ok := openSaveFileDialog(job.target); ok {
+			job.target = target
+		} else {
+			job.logInfo("用户取消保存。")
+			return
 		}
-	} else {
-		logInfo("不支持断点续传，将以单进程模式下载。")
-		if err := job.singleThreadDownload(); err != nil {
-			return err
+
+		if err := job.fetchInfo(); err != nil {
+			job.msgErr("获取文件信息出错：" + err.Error())
+			return
 		}
-	}
 
-	logInfo("下载完成：", job.target)
+		if job.supportRange {
+			job.logInfo("支持断点续传，线程：%d", job.Downloader.threads)
+			if err := job.multiThreadDownload(); err != nil {
+				job.msgErr(err.Error())
+				return
+			}
+		} else {
+			job.logInfo("不支持断点续传，将以单进程模式下载。")
+			if err := job.singleThreadDownload(); err != nil {
+				job.msgErr(err.Error())
+				return
+			}
+		}
 
-	return nil
+		job.logInfo("下载完成：%s", job.target)
+	}()
+}
+
+func (job *DownloadJob) logInfo(tpl string, vars ...any) {
+	logInfo(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
+}
+
+func (job *DownloadJob) msgErr(lines ...string) int32 {
+	return MessageBoxError(0, fmt.Sprintf("[下载任务 %d ]: ", job.id), lines...)
 }
 
 func (job *DownloadJob) singleThreadDownload() error {
@@ -133,7 +151,7 @@ func (job *DownloadJob) multiThreadDownload() error {
 // downloadChunk 下载文件的单个分块
 func (job *DownloadJob) downloadChunk(index int, wg *sync.WaitGroup, startByte, endByte int64) error {
 	defer func() {
-		logInfo("切片: ", index+1, " 下载完成")
+		job.logInfo("切片 %d 下载完成", index+1)
 		wg.Done()
 	}()
 
