@@ -21,8 +21,9 @@ type OnTitleChangedCallback func(title string)
 type OnDownloadCallback func(url string)
 
 type View struct {
-	Hwnd   WkeHandle
-	Window *Window
+	Hwnd     WkeHandle
+	Window   *Window
+	DevTools *View
 
 	mb     *Blink
 	parent *View

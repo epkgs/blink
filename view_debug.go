@@ -6,7 +6,7 @@ import (
 	"github.com/epkgs/mini-blink/internal/devtools"
 )
 
-func (v *View) ShowDevTools() {
+func (v *View) ShowDevTools(devtoolsCallbacks ...func(devtools *View)) {
 
 	if !v.mb.Resource.IsExist("__devtools__") {
 		v.mb.Resource.Bind("__devtools__", devtools.FS)
@@ -15,6 +15,12 @@ func (v *View) ShowDevTools() {
 	var callback WkeOnShowDevtoolsCallback = func(hwnd WkeHandle, param uintptr) uintptr {
 
 		view := NewView(v.mb, hwnd, WKE_WINDOW_TYPE_POPUP, v)
+
+		v.DevTools = view
+
+		for _, cb := range devtoolsCallbacks {
+			cb(view)
+		}
 
 		view.ForceReload() // 必须刷新才会加载
 
