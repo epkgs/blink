@@ -179,6 +179,10 @@ func (w *Window) Move() {
 	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MOVE|win.HTCAPTION), 0)
 }
 
+func (w *Window) Destroy() {
+	w.view.Destroy()
+}
+
 func (w *Window) SetIcon(handle win.HANDLE) error {
 	if handle == 0 {
 		return errors.New("获取图标句柄失败，无法设置 ICON 。")
