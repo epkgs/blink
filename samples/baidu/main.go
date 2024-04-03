@@ -16,7 +16,7 @@ func main() {
 	view.Window.SetTitle("miniblink窗口")
 	view.Window.MoveToCenter()
 	view.LoadURL("https://www.baidu.com")
-	view.Show()
+	view.ShowWindow()
 
 	view.OnDestroy(func() {
 		os.Exit(0)

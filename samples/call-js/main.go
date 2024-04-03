@@ -31,7 +31,7 @@ func main() {
 	view.Window.MoveToCenter()
 
 	view.LoadURL("http://local/call_js.html")
-	view.Show()
+	view.ShowWindow()
 
 	view.OnConsole(func(level int, message, sourceName string, sourceLine int, stackTrace string) {
 		fmt.Printf("js console: %s\n", message)

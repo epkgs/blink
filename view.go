@@ -12,6 +12,7 @@ import (
 )
 
 type OnConsoleCallback func(level int, message, sourceName string, sourceLine int, stackTrace string)
+type OnClosingCallback func() bool // 返回 false 拒绝关闭窗口
 type OnDestroyCallback func()
 type OnLoadUrlBeginCallback func(url string, job WkeNetJob) bool
 type OnLoadUrlEndCallback func(url string, job WkeNetJob, buf []byte)
@@ -28,6 +29,7 @@ type View struct {
 	mb     *Blink
 	parent *View
 
+	onClosingCallbacks       []OnClosingCallback
 	onDestroyCallbacks       []OnDestroyCallback
 	onLoadUrlBeginCallbacks  []OnLoadUrlBeginCallback
 	onLoadUrlEndCallbacks    []OnLoadUrlEndCallback
@@ -49,6 +51,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 		Hwnd:   hwnd,
 		parent: p,
 
+		onClosingCallbacks:       []OnClosingCallback{},
 		onDestroyCallbacks:       []OnDestroyCallback{},
 		onLoadUrlBeginCallbacks:  []OnLoadUrlBeginCallback{},
 		onLoadUrlEndCallbacks:    []OnLoadUrlEndCallback{},
@@ -64,6 +67,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 
 	view.registerFileSystem()
 
+	view.registerOnClosing()
 	view.registerOnDestroy()
 	view.registerOnLoadUrlBegin()
 	view.registerOnLoadUrlEnd()
@@ -107,12 +111,16 @@ func (v *View) addToPool() {
 	})
 }
 
-func (v *View) Show() {
+func (v *View) ShowWindow() {
 	v.mb.CallFunc("wkeShowWindow", uintptr(v.Hwnd), 1)
 }
 
-func (v *View) Hide() {
+func (v *View) HideWindow() {
 	v.mb.CallFunc("wkeShowWindow", uintptr(v.Hwnd), 0)
+}
+
+func (v *View) CloseWindow() {
+	v.Window.Close()
 }
 
 func (v *View) Destroy() {
@@ -192,15 +200,33 @@ func (v *View) registerFileSystem() {
 }
 
 // 可以添加多个 callback，将按照加入顺序依次执行
+//
+// callback 返回 true 拒绝关闭窗口
+func (v *View) OnClosing(callback OnClosingCallback) {
+	v.onClosingCallbacks = append(v.onClosingCallbacks, callback)
+}
+func (v *View) registerOnClosing() {
+	var handler WkeWindowClosingCallback = func(view WkeHandle, param uintptr) (boolRes uintptr) {
+		for _, callback := range v.onClosingCallbacks {
+			if ok := callback(); !ok {
+				return BoolToPtr(false)
+			}
+		}
+		return BoolToPtr(true)
+	}
+	v.mb.CallFunc("wkeOnWindowClosing", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
+}
+
+// 可以添加多个 callback，将按照加入顺序依次执行
 func (v *View) OnDestroy(callback OnDestroyCallback) {
 	v.onDestroyCallbacks = append(v.onDestroyCallbacks, callback)
 }
 func (v *View) registerOnDestroy() {
-	var handler = func(view, param uintptr) uintptr {
+	var handler WkeWindowDestroyCallback = func(view WkeHandle, param uintptr) (voidRes uintptr) {
 		for _, callback := range v.onDestroyCallbacks {
 			callback()
 		}
-		return 0
+		return
 	}
 	v.mb.CallFunc("wkeOnWindowDestroy", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 }
@@ -428,7 +454,7 @@ func (v *View) listenMaxBtnClick() {
 
 func (v *View) listenCloseBtnClick() {
 	v.AddEventListener(".mb-btn-close", "click", func() {
-		v.Destroy()
+		v.CloseWindow()
 	})
 }
 

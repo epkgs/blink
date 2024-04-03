@@ -29,7 +29,7 @@ func main() {
 
 	view.LoadURL("http://local/no-border.html")
 
-	view.Show()
+	view.ShowWindow()
 
 	view.OnDestroy(func() {
 		os.Exit(0)

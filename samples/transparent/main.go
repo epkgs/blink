@@ -26,7 +26,7 @@ func main() {
 
 	view.LoadURL("http://local/transparent.html")
 
-	view.Show()
+	view.ShowWindow()
 
 	view.OnDestroy(func() {
 		os.Exit(0)
