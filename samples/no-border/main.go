@@ -39,5 +39,5 @@ func main() {
 		fmt.Printf("custom zone hover\n")
 	})
 
-	app.KeepRunning()
+	app.Run()
 }

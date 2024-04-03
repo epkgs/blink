@@ -61,14 +61,16 @@ func (js *JS) bindGO() {
 
 func (js *JS) AddCallback(key string, callback JsCallback) {
 	locker.Lock()
+	defer locker.Unlock()
+
 	js.callbacks[key] = callback
-	locker.Unlock()
 }
 
 func (js *JS) removeCallback(key string) {
 	locker.Lock()
+	defer locker.Unlock()
+
 	delete(js.callbacks, key)
-	locker.Unlock()
 }
 
 func (js *JS) BindFunction(funcName string, funcArgCount uint32, callback BindFunctionCallback) {

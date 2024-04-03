@@ -60,5 +60,5 @@ func main() {
 
 	view.ShowDevTools()
 
-	app.KeepRunning()
+	app.Run()
 }

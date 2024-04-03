@@ -26,6 +26,20 @@ const (
 	WMSZ_BOTTOMRIGHT WM_SIZING = 8 // 右下角
 )
 
+const (
+	WM_USER       = win.WM_USER
+	WM_TRAYNOTIFY = WM_USER + 1
+
+	ID_TRAY             = WM_USER + 100
+	ID_TRAYMENU_RESTORE = WM_USER + 101
+	ID_TRAYMENU_EXIT    = WM_USER + 102
+)
+
+var (
+	user32     = syscall.NewLazyDLL("user32.dll")
+	appendMenu = user32.NewProc("AppendMenuW")
+)
+
 type Window struct {
 	mb   *Blink
 	view *View
@@ -40,6 +54,11 @@ type Window struct {
 	sizing WM_SIZING
 
 	_oldWndProc uintptr
+
+	iconHandle win.HANDLE
+
+	nid               win.NOTIFYICONDATA
+	useSimpleTrayMenu bool
 }
 
 func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
@@ -66,24 +85,55 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
 	res := win.CallWindowProc(uintptr(w._oldWndProc), win.HWND(hwnd), uint32(message), wparam, lparam)
 
-	switch message {
-	case win.WM_ENTERSIZEMOVE:
-		w.udpateCursor()
-	case win.WM_GETMINMAXINFO:
-		// 修正无边框窗口，最大化时的尺寸问题，避免遮挡任务栏
-		if w.isMaximized && w.windowType == WKE_WINDOW_TYPE_TRANSPARENT {
-			lpmmi := (*win.MINMAXINFO)(unsafe.Pointer(lparam))
-			hMonitor := win.MonitorFromWindow(win.HWND(w.Hwnd), win.MONITOR_DEFAULTTONEAREST)
-			var monitorInfo win.MONITORINFO
-			monitorInfo.CbSize = uint32(unsafe.Sizeof(monitorInfo))
-			win.GetMonitorInfo(hMonitor, &monitorInfo)
+	func() {
+		switch message {
+		case win.WM_ENTERSIZEMOVE:
+			w.udpateCursor()
+		case win.WM_GETMINMAXINFO:
+			// 修正无边框窗口，最大化时的尺寸问题，避免遮挡任务栏
+			if w.isMaximized && w.windowType == WKE_WINDOW_TYPE_TRANSPARENT {
+				lpmmi := (*win.MINMAXINFO)(unsafe.Pointer(lparam))
+				hMonitor := win.MonitorFromWindow(win.HWND(w.Hwnd), win.MONITOR_DEFAULTTONEAREST)
+				var monitorInfo win.MONITORINFO
+				monitorInfo.CbSize = uint32(unsafe.Sizeof(monitorInfo))
+				win.GetMonitorInfo(hMonitor, &monitorInfo)
 
-			lpmmi.PtMaxPosition.X = monitorInfo.RcWork.Left
-			lpmmi.PtMaxPosition.Y = monitorInfo.RcWork.Top
-			lpmmi.PtMaxSize.X = monitorInfo.RcWork.Right - monitorInfo.RcWork.Left
-			lpmmi.PtMaxSize.Y = monitorInfo.RcWork.Bottom - monitorInfo.RcWork.Top
+				lpmmi.PtMaxPosition.X = monitorInfo.RcWork.Left
+				lpmmi.PtMaxPosition.Y = monitorInfo.RcWork.Top
+				lpmmi.PtMaxSize.X = monitorInfo.RcWork.Right - monitorInfo.RcWork.Left
+				lpmmi.PtMaxSize.Y = monitorInfo.RcWork.Bottom - monitorInfo.RcWork.Top
+			}
+
+		case WM_TRAYNOTIFY:
+
+			if lparam == win.WM_LBUTTONDBLCLK {
+				logInfo("Tray icon double clicked")
+				w.Restore()
+				return
+			}
+
+			if lparam == win.WM_RBUTTONUP {
+				logInfo("Right click tray icon")
+				if w.useSimpleTrayMenu {
+					w.showSimpleTrayMenu()
+					return
+				}
+			}
+		case win.WM_COMMAND:
+			// 处理菜单点击事件
+			menuID := LOWORD(uint32(wparam))
+			switch menuID {
+			case ID_TRAYMENU_RESTORE:
+				logInfo("Restore menu item clicked")
+				w.Restore()
+			case ID_TRAYMENU_EXIT:
+				logInfo("Exit menu item clicked")
+				// w.Hide()
+				w.Destroy()
+			}
+
 		}
-	}
+	}()
 
 	return res
 }
@@ -169,6 +219,28 @@ func (w *Window) udpateCursor() bool {
 	return false
 }
 
+func (w *Window) Show() {
+	win.ShowWindow(win.HWND(w.Hwnd), win.SW_SHOW)
+}
+
+func (w *Window) Hide() {
+	win.ShowWindow(win.HWND(w.Hwnd), win.SW_HIDE)
+}
+
+func (w *Window) Close() {
+	win.PostMessage(win.HWND(w.Hwnd), win.WM_CLOSE, 0, 0)
+}
+
+func (w *Window) Destroy() {
+	win.DestroyWindow(win.HWND(w.Hwnd))
+	// w.view.DestroyWindow()
+}
+
+func (w *Window) MinimizeToTray() {
+
+	win.ShowWindow(win.HWND(w.Hwnd), win.SW_HIDE)
+}
+
 func (w *Window) Minimize() {
 	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MINIMIZE), 0)
 }
@@ -194,16 +266,72 @@ func (w *Window) EnableDragging() {
 	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MOVE|win.HTCAPTION), 0)
 }
 
-func (w *Window) Destroy() {
-	w.view.Destroy()
+func (w *Window) CloseAsHideTray() {
+	w.EnableTray()
+	w.view.OnClosing(func() bool {
+		w.MinimizeToTray()
+		return false
+	})
+	w.useSimpleTrayMenu = true
+}
+
+func (w *Window) EnableTray(setups ...func(*win.NOTIFYICONDATA)) {
+	w.nid = win.NOTIFYICONDATA{
+		HWnd:             win.HWND(w.Hwnd),
+		UID:              ID_TRAY,
+		UFlags:           win.NIF_ICON | win.NIF_MESSAGE | win.NIF_TIP,
+		UCallbackMessage: WM_TRAYNOTIFY,
+		HIcon:            win.HICON(w.iconHandle),
+		CbSize:           uint32(unsafe.Sizeof(w.nid)),
+	}
+	copy(w.nid.SzTip[:], StringToU16Arr("双击打开窗口"))
+
+	for _, setup := range setups {
+		setup(&w.nid)
+	}
+
+	win.Shell_NotifyIcon(win.NIM_ADD, &w.nid)
+
+	w.view.OnDestroy(func() {
+		logInfo("RemoveTray in view OnDestroy event")
+		w.RemoveTray()
+	})
+}
+
+func (w *Window) RemoveTray() {
+
+	win.Shell_NotifyIcon(win.NIM_DELETE, &w.nid)
+
+}
+
+// TODO: 抽离代码，使其更通用，可以在外部添加修改菜单
+func (w *Window) showSimpleTrayMenu() {
+
+	// 创建托盘菜单
+	hMenu := win.CreatePopupMenu()
+	if hMenu == 0 {
+		return
+	}
+	defer win.DestroyMenu(hMenu)
+
+	appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_RESTORE, StringToWCharPtr("显示窗口"))
+	appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_EXIT, StringToWCharPtr("退出"))
+
+	var pt win.POINT
+	win.GetCursorPos(&pt)
+	win.SetMenuDefaultItem(hMenu, ID_TRAYMENU_RESTORE, false)
+	win.TrackPopupMenu(hMenu, win.TPM_LEFTALIGN|win.TPM_RIGHTBUTTON, pt.X, pt.Y, 0, win.HWND(w.Hwnd), nil)
 }
 
 func (w *Window) SetIcon(handle win.HANDLE) error {
 	if handle == 0 {
 		return errors.New("获取图标句柄失败，无法设置 ICON 。")
 	}
-	win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, 1, uintptr(handle))
-	win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, 0, uintptr(handle))
+
+	w.iconHandle = handle
+
+	win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, win.IMAGE_ICON, uintptr(handle))
+	// win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, win.IMAGE_BITMAP, uintptr(handle))
 
 	return nil
 }

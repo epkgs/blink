@@ -183,3 +183,7 @@ type KnownCType interface {
 		// utf8
 		Utf8
 }
+
+func LOWORD(dwValue uint32) uint16 {
+	return uint16(dwValue & 0xFFFF)
+}

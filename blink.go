@@ -1,18 +1,20 @@
 package blink
 
 import (
-	"io"
-	"os"
 	"runtime"
 	"sync"
 	"unsafe"
 
-	"github.com/epkgs/mini-blink/internal/dll"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 )
 
 var locker sync.RWMutex
+
+type BlinkJob struct {
+	job  func()
+	done chan bool
+}
 
 type Blink struct {
 	Config *Config
@@ -28,46 +30,9 @@ type Blink struct {
 	windows map[WkeHandle]*Window
 
 	bootScripts []string
-}
 
-func loadDLL(conf *Config) *windows.DLL {
-
-	// 尝试在默认目录里加载 DLL
-	if loaded, err := windows.LoadDLL(DLL_FILE); err == nil {
-		return loaded
-	}
-
-	fullPath := conf.GetDllFilePath()
-
-	// 放入闭包，使其可以被释放
-	func() {
-
-		file, err := dll.FS.Open(DLL_FILE)
-		if err != nil {
-			panic("无法从默认路径或内嵌资源里找到 blink.dll，err: " + err.Error())
-		}
-
-		data, err := io.ReadAll(file)
-		if err != nil {
-			panic("读取内联DLL出错，err: " + err.Error())
-		}
-
-		newFile, err := os.Create(fullPath)
-		if err != nil {
-			panic("无法创建dll文件，err: " + err.Error())
-		}
-
-		defer newFile.Close()
-		n, err := newFile.Write(data)
-		if err != nil {
-			panic("写入dll文件失败，err: " + err.Error())
-		}
-		if n != len(data) {
-			panic("写入校验失败")
-		}
-	}()
-
-	return windows.MustLoadDLL(fullPath)
+	quit chan bool
+	jobs chan BlinkJob
 }
 
 func NewApp(setups ...func(*Config)) *Blink {
@@ -84,6 +49,9 @@ func NewApp(setups ...func(*Config)) *Blink {
 
 		views:   make(map[WkeHandle]*View),
 		windows: make(map[WkeHandle]*Window),
+
+		quit: make(chan bool),
+		jobs: make(chan BlinkJob, 20),
 	}
 
 	if !blink.IsInitialize() {
@@ -95,16 +63,20 @@ func NewApp(setups ...func(*Config)) *Blink {
 	return blink
 }
 
+func (mb *Blink) Exit() {
+	close(mb.quit)
+}
+
 func (mb *Blink) Free() {
 	mb.Finalize()
-
 	mb.dll.Release()
 }
 
 func (mb *Blink) GetViewByHandle(viewHwnd WkeHandle) *View {
 	locker.Lock()
+	defer locker.Unlock()
+
 	view, exist := mb.views[viewHwnd]
-	locker.Unlock()
 	if !exist {
 		return nil
 	}
@@ -113,8 +85,9 @@ func (mb *Blink) GetViewByHandle(viewHwnd WkeHandle) *View {
 
 func (mb *Blink) GetWindowByHandle(windowHwnd WkeHandle) *Window {
 	locker.Lock()
+	defer locker.Unlock()
+
 	window, exist := mb.windows[windowHwnd]
-	locker.Unlock()
 	if !exist {
 		return nil
 	}
@@ -138,7 +111,17 @@ func (mb *Blink) DispatchMessage(msg *win.MSG) bool {
 
 }
 
-func (mb *Blink) KeepRunning() {
+func (mb *Blink) AddJob(job func()) chan bool {
+	done := make(chan bool)
+	mb.jobs <- BlinkJob{
+		job,
+		done,
+	}
+
+	return done
+}
+
+func (mb *Blink) Run() {
 
 	runtime.LockOSThread()
 	defer func() {
@@ -148,16 +131,36 @@ func (mb *Blink) KeepRunning() {
 
 	msg := &win.MSG{}
 
-	for win.GetMessage(msg, 0, 0, 0) > 0 {
+	func() {
 
-		win.TranslateMessage(msg)
+		for {
+			select {
+			case <-mb.quit:
+				logInfo("Exit APP")
+				return
 
-		if mb.DispatchMessage(msg) {
-			continue
+			case bj := <-mb.jobs:
+				logInfo("received job")
+				bj.job()
+				close(bj.done)
+				logInfo("Job done!!!")
+
+			default:
+
+				if win.GetMessage(msg, 0, 0, 0) <= 0 {
+					return
+				}
+
+				win.TranslateMessage(msg)
+
+				if mb.DispatchMessage(msg) {
+					continue
+				}
+
+				win.DispatchMessage(msg)
+			}
 		}
-
-		win.DispatchMessage(msg)
-	}
+	}()
 
 }
 

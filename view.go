@@ -29,13 +29,13 @@ type View struct {
 	mb     *Blink
 	parent *View
 
-	onClosingCallbacks       []OnClosingCallback
-	onDestroyCallbacks       []OnDestroyCallback
-	onLoadUrlBeginCallbacks  []OnLoadUrlBeginCallback
-	onLoadUrlEndCallbacks    []OnLoadUrlEndCallback
-	onDocumentReadyCallbacks []OnDocumentReadyCallback
-	onTitleChangedCallbacks  []OnTitleChangedCallback
-	onDownloadCallbacks      []OnDownloadCallback
+	onClosingCallbacks       map[string]OnClosingCallback
+	onDestroyCallbacks       map[string]OnDestroyCallback
+	onLoadUrlBeginCallbacks  map[string]OnLoadUrlBeginCallback
+	onLoadUrlEndCallbacks    map[string]OnLoadUrlEndCallback
+	onDocumentReadyCallbacks map[string]OnDocumentReadyCallback
+	onTitleChangedCallbacks  map[string]OnTitleChangedCallback
+	onDownloadCallbacks      map[string]OnDownloadCallback
 }
 
 func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*View) *View {
@@ -51,13 +51,13 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 		Hwnd:   hwnd,
 		parent: p,
 
-		onClosingCallbacks:       []OnClosingCallback{},
-		onDestroyCallbacks:       []OnDestroyCallback{},
-		onLoadUrlBeginCallbacks:  []OnLoadUrlBeginCallback{},
-		onLoadUrlEndCallbacks:    []OnLoadUrlEndCallback{},
-		onDocumentReadyCallbacks: []OnDocumentReadyCallback{},
-		onTitleChangedCallbacks:  []OnTitleChangedCallback{},
-		onDownloadCallbacks:      []OnDownloadCallback{},
+		onClosingCallbacks:       make(map[string]OnClosingCallback),
+		onDestroyCallbacks:       make(map[string]OnDestroyCallback),
+		onLoadUrlBeginCallbacks:  make(map[string]OnLoadUrlBeginCallback),
+		onLoadUrlEndCallbacks:    make(map[string]OnLoadUrlEndCallback),
+		onDocumentReadyCallbacks: make(map[string]OnDocumentReadyCallback),
+		onTitleChangedCallbacks:  make(map[string]OnTitleChangedCallback),
+		onDownloadCallbacks:      make(map[string]OnDownloadCallback),
 	}
 
 	view.Window = newWindow(mb, view, windowType)
@@ -92,39 +92,45 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 
 func (v *View) addToPool() {
 	locker.Lock()
+	defer locker.Unlock()
+
 	v.mb.views[v.Hwnd] = v
 	v.mb.windows[v.Window.Hwnd] = v.Window
-	locker.Unlock()
 
 	v.OnDestroy(func() {
 		locker.Lock()
+		defer locker.Unlock()
+
+		if v.DevTools != nil {
+			v.DevTools.DestroyWindow()
+		}
+
 		delete(v.mb.windows, v.Window.Hwnd)
 		delete(v.mb.views, v.Hwnd)
-		locker.Unlock()
 
 		// 删除子view
 		for _, child := range v.mb.views {
 			if child.parent == v {
-				child.Destroy()
+				child.DestroyWindow()
 			}
 		}
 	})
 }
 
 func (v *View) ShowWindow() {
-	v.mb.CallFunc("wkeShowWindow", uintptr(v.Hwnd), 1)
+	v.Window.Show()
 }
 
 func (v *View) HideWindow() {
-	v.mb.CallFunc("wkeShowWindow", uintptr(v.Hwnd), 0)
+	v.Window.Hide()
 }
 
 func (v *View) CloseWindow() {
 	v.Window.Close()
 }
 
-func (v *View) Destroy() {
-	v.mb.CallFunc("wkeDestroyWebWindow", uintptr(v.Hwnd))
+func (v *View) DestroyWindow() {
+	v.Window.Destroy()
 }
 
 func (v *View) Reload() bool {
@@ -201,12 +207,20 @@ func (v *View) registerFileSystem() {
 
 // 可以添加多个 callback，将按照加入顺序依次执行
 //
-// callback 返回 true 拒绝关闭窗口
-func (v *View) OnClosing(callback OnClosingCallback) {
-	v.onClosingCallbacks = append(v.onClosingCallbacks, callback)
+// callback 返回 false 拒绝关闭窗口
+func (v *View) OnClosing(callback OnClosingCallback) (stop func()) {
+
+	key := RandString(10)
+
+	v.onClosingCallbacks[key] = callback
+
+	return func() {
+		delete(v.onClosingCallbacks, key)
+	}
 }
 func (v *View) registerOnClosing() {
 	var handler WkeWindowClosingCallback = func(view WkeHandle, param uintptr) (boolRes uintptr) {
+		logInfo("Trigger view.OnClosing")
 		for _, callback := range v.onClosingCallbacks {
 			if ok := callback(); !ok {
 				return BoolToPtr(false)
@@ -218,11 +232,19 @@ func (v *View) registerOnClosing() {
 }
 
 // 可以添加多个 callback，将按照加入顺序依次执行
-func (v *View) OnDestroy(callback OnDestroyCallback) {
-	v.onDestroyCallbacks = append(v.onDestroyCallbacks, callback)
+func (v *View) OnDestroy(callback OnDestroyCallback) (stop func()) {
+
+	key := RandString(10)
+
+	v.onDestroyCallbacks[key] = callback
+
+	return func() {
+		delete(v.onDestroyCallbacks, key)
+	}
 }
 func (v *View) registerOnDestroy() {
 	var handler WkeWindowDestroyCallback = func(view WkeHandle, param uintptr) (voidRes uintptr) {
+		logInfo("Trigger view.OnDestroy")
 		for _, callback := range v.onDestroyCallbacks {
 			callback()
 		}
@@ -231,8 +253,15 @@ func (v *View) registerOnDestroy() {
 	v.mb.CallFunc("wkeOnWindowDestroy", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 }
 
-func (v *View) OnLoadUrlBegin(callback OnLoadUrlBeginCallback) {
-	v.onLoadUrlBeginCallbacks = append(v.onLoadUrlBeginCallbacks, callback)
+func (v *View) OnLoadUrlBegin(callback OnLoadUrlBeginCallback) (stop func()) {
+
+	key := RandString(10)
+
+	v.onLoadUrlBeginCallbacks[key] = callback
+
+	return func() {
+		delete(v.onLoadUrlBeginCallbacks, key)
+	}
 }
 func (v *View) registerOnLoadUrlBegin() {
 	var handler = func(view, param, url, job uintptr) (boolPtr uintptr) {
@@ -249,8 +278,15 @@ func (v *View) registerOnLoadUrlBegin() {
 	v.mb.CallFunc("wkeOnLoadUrlBegin", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 }
 
-func (v *View) OnLoadUrlEnd(callback OnLoadUrlEndCallback) {
-	v.onLoadUrlEndCallbacks = append(v.onLoadUrlEndCallbacks, callback)
+func (v *View) OnLoadUrlEnd(callback OnLoadUrlEndCallback) (stop func()) {
+
+	key := RandString(10)
+
+	v.onLoadUrlEndCallbacks[key] = callback
+
+	return func() {
+		delete(v.onLoadUrlEndCallbacks, key)
+	}
 }
 func (v *View) registerOnLoadUrlEnd() {
 	var handler = func(view, param, url, job, buf, len uintptr) uintptr {
@@ -266,10 +302,16 @@ func (v *View) registerOnLoadUrlEnd() {
 	v.mb.CallFunc("wkeOnLoadUrlEnd", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 }
 
-func (v *View) OnDocumentReady(callback OnDocumentReadyCallback) {
-	v.onDocumentReadyCallbacks = append(v.onDocumentReadyCallbacks, callback)
-}
+func (v *View) OnDocumentReady(callback OnDocumentReadyCallback) (stop func()) {
 
+	key := RandString(10)
+
+	v.onDocumentReadyCallbacks[key] = callback
+
+	return func() {
+		delete(v.onDocumentReadyCallbacks, key)
+	}
+}
 func (v *View) registerOnDocumentReady() {
 	var cb WkeDocumentReady2Callback = func(view WkeHandle, param uintptr, frame WkeWebFrameHandle) (voidRes uintptr) {
 
@@ -488,8 +530,15 @@ func (v *View) IsDocumentReady() bool {
 	return p != 0
 }
 
-func (v *View) OnTitleChanged(callback OnTitleChangedCallback) {
-	v.onTitleChangedCallbacks = append(v.onTitleChangedCallbacks, callback)
+func (v *View) OnTitleChanged(callback OnTitleChangedCallback) (stop func()) {
+
+	key := RandString(10)
+
+	v.onTitleChangedCallbacks[key] = callback
+
+	return func() {
+		delete(v.onTitleChangedCallbacks, key)
+	}
 }
 func (v *View) registerOnTitleChanged() {
 
@@ -505,8 +554,15 @@ func (v *View) registerOnTitleChanged() {
 	v.mb.CallFunc("wkeOnTitleChanged", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 }
 
-func (v *View) OnDownload(callback OnDownloadCallback) {
-	v.onDownloadCallbacks = append(v.onDownloadCallbacks, callback)
+func (v *View) OnDownload(callback OnDownloadCallback) (stop func()) {
+
+	key := RandString(10)
+
+	v.onDownloadCallbacks[key] = callback
+
+	return func() {
+		delete(v.onDownloadCallbacks, key)
+	}
 }
 func (v *View) registerOnDownload() {
 	var cb WkeDownloadCallback = func(view WkeHandle, param uintptr, url uintptr) (voidRes uintptr) {
