@@ -72,6 +72,23 @@ func (mb *Blink) Free() {
 	mb.dll.Release()
 }
 
+func (mb *Blink) GetViews() []*View {
+	var views []*View
+
+	for _, v := range mb.views {
+		views = append(views, v)
+	}
+
+	return views
+}
+
+func (mb *Blink) GetFirstView() (view *View) {
+	for _, view = range mb.views {
+		break
+	}
+	return
+}
+
 func (mb *Blink) GetViewByHandle(viewHwnd WkeHandle) *View {
 	locker.Lock()
 	defer locker.Unlock()
