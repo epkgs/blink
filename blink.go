@@ -39,12 +39,19 @@ func NewApp(setups ...func(*Config)) *Blink {
 
 	config := NewConfig(setups...)
 
+	dll, err := loadDLL(config)
+
+	if err != nil {
+		MessageBoxError(0, err.Error())
+		panic(err)
+	}
+
 	blink := &Blink{
 		Config:     config,
 		Resource:   NewResourceLoader(),
 		Downloader: NewDownloader(3),
 
-		dll:   loadDLL(config),
+		dll:   dll,
 		procs: make(map[string]*windows.Proc),
 
 		views:   make(map[WkeHandle]*View),
