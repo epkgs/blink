@@ -325,6 +325,7 @@ func (js *JS) ToJsValue(es JsExecState, value any) JsValue {
 		}
 		return obj
 	}
+	// TODO: 移除 panic，应该使用返回 error
 	panic("不支持的go类型：" + rv.Kind().String() + "(" + rv.Type().String() + ")")
 }
 
@@ -355,6 +356,7 @@ func (js *JS) ToGoValue(es JsExecState, value JsValue) any {
 		}
 		return ps
 	default:
+		// TODO: 移除 panic，应该使用返回 error
 		panic("不支持的js类型：" + strconv.Itoa(int(value)))
 	}
 }

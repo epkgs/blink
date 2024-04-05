@@ -32,6 +32,7 @@ func NewConfig(setups ...func(*Config)) *Config {
 	}
 
 	if err := os.MkdirAll(conf.tempPath, 0644); err != nil {
+		// TODO: 移除 panic，应该使用返回 error
 		panic("临时文件夹不存在，且创建不成功，请确认文件夹权限。")
 	}
 
