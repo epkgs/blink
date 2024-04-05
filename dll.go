@@ -18,29 +18,37 @@ func loadDLL(conf *Config) (*windows.DLL, error) {
 
 	fullPath := conf.GetDllFilePath()
 
-	// 放入闭包，使其可以被释放
-	file, err := dll.FS.Open(DLL_FILE)
-	if err != nil {
-		return nil, errors.New("无法从默认路径或内嵌资源里找到 blink.dll，err: " + err.Error())
-	}
+	// 放入闭包，使其可以使用 defer 关闭文件
+	err := func() error {
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, errors.New("读取内联DLL出错，err: " + err.Error())
-	}
+		file, err := dll.FS.Open(DLL_FILE)
+		if err != nil {
+			return errors.New("无法从默认路径或内嵌资源里找到 blink.dll，err: " + err.Error())
+		}
 
-	newFile, err := os.Create(fullPath)
-	if err != nil {
-		return nil, errors.New("无法创建dll文件，err: " + err.Error())
-	}
-	defer newFile.Close()
+		data, err := io.ReadAll(file)
+		if err != nil {
+			return errors.New("读取内联DLL出错，err: " + err.Error())
+		}
 
-	n, err := newFile.Write(data)
+		newFile, err := os.Create(fullPath)
+		if err != nil {
+			return errors.New("无法创建dll文件，err: " + err.Error())
+		}
+		defer newFile.Close()
+
+		n, err := newFile.Write(data)
+		if err != nil {
+			return errors.New("写入dll文件失败，err: " + err.Error())
+		}
+		if n != len(data) {
+			return errors.New("写入校验失败")
+		}
+		return nil
+	}()
+
 	if err != nil {
-		return nil, errors.New("写入dll文件失败，err: " + err.Error())
-	}
-	if n != len(data) {
-		return nil, errors.New("写入校验失败")
+		return nil, err
 	}
 
 	return windows.MustLoadDLL(fullPath), nil
