@@ -83,9 +83,7 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 
 func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
-	res := win.CallWindowProc(uintptr(w._oldWndProc), win.HWND(hwnd), uint32(message), wparam, lparam)
-
-	func() {
+	handled := func() bool {
 		switch message {
 		case win.WM_ENTERSIZEMOVE:
 			w.udpateCursor()
@@ -109,14 +107,14 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			if lparam == win.WM_LBUTTONDBLCLK {
 				logInfo("Tray icon double clicked")
 				w.Restore()
-				return
+				return true
 			}
 
 			if lparam == win.WM_RBUTTONUP {
 				logInfo("Right click tray icon")
 				if w.useSimpleTrayMenu {
 					w.showSimpleTrayMenu()
-					return
+					return true
 				}
 			}
 		case win.WM_COMMAND:
@@ -126,53 +124,56 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			case ID_TRAYMENU_RESTORE:
 				logInfo("Restore menu item clicked")
 				w.Restore()
+				return true
 			case ID_TRAYMENU_EXIT:
 				logInfo("Exit menu item clicked")
 				// w.Hide()
 				w.Destroy()
+				return true
 			}
 
+		case win.WM_MOUSEMOVE:
+			if !w.enableBorderResize {
+				return false
+			}
+			if w.windowType != WKE_WINDOW_TYPE_TRANSPARENT {
+				return false
+			}
+			w.handleMouseMove()
+			return false // 可能还有其他事件
+
+		case win.WM_LBUTTONDOWN:
+			if wparam != win.MK_LBUTTON || w.sizing <= 0 {
+				return false
+			}
+			win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_SIZE|w.sizing), 0)
+			return true
 		}
+
+		return false
 	}()
 
-	return res
-}
+	if handled {
 
-// 返回 true 标识已处理
-func (w *Window) DispatchMessage(msg *win.MSG) bool {
-
-	if !w.enableBorderResize {
-		return false
+		return 1
 	}
 
-	if w.windowType != WKE_WINDOW_TYPE_TRANSPARENT {
-		return false
-	}
-
-	switch msg.Message {
-	case win.WM_MOUSEMOVE:
-		return w.handleMouseMove(msg)
-	case win.WM_LBUTTONDOWN:
-		if msg.WParam != win.MK_LBUTTON || w.sizing <= 0 {
-			return false
-		}
-		win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_SIZE|w.sizing), 0)
-		return true
-	}
-
-	// 没有任何处理事件
-	return false
+	return win.CallWindowProc(uintptr(w._oldWndProc), win.HWND(hwnd), uint32(message), wparam, lparam)
 }
 
 var border int32 = 5 // 设置 5 像素的 border 反应厚度
-func (w *Window) handleMouseMove(msg *win.MSG) bool {
+func (w *Window) handleMouseMove() bool {
+
+	pt := &win.POINT{}
+	win.GetCursorPos(pt)
+
 	rect := &win.RECT{}
 	win.GetWindowRect(win.HWND(w.Hwnd), rect)
 
-	inLeft := msg.Pt.X >= rect.Left && msg.Pt.X <= rect.Left+border
-	inReght := msg.Pt.X <= rect.Right && msg.Pt.X >= rect.Right-border
-	inTop := msg.Pt.Y >= rect.Top && msg.Pt.Y <= rect.Top+border
-	inBottom := msg.Pt.Y <= rect.Bottom && msg.Pt.Y >= rect.Bottom-border
+	inLeft := pt.X >= rect.Left && pt.X <= rect.Left+border
+	inReght := pt.X <= rect.Right && pt.X >= rect.Right-border
+	inTop := pt.Y >= rect.Top && pt.Y <= rect.Top+border
+	inBottom := pt.Y <= rect.Bottom && pt.Y >= rect.Bottom-border
 
 	if inLeft && inTop { // 左上角
 		w.sizing = WMSZ_TOPLEFT

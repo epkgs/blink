@@ -1,4 +1,4 @@
-module no-border
+module flameless
 
 go 1.22.0
 

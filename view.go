@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
-
-	"github.com/lxn/win"
 )
 
 type OnConsoleCallback func(level int, message, sourceName string, sourceLine int, stackTrace string)
@@ -92,13 +90,13 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 
 func (v *View) addToPool() {
 
-	func() {
-		locker.Lock()
-		defer locker.Unlock()
+	locker.Lock()
+	defer locker.Unlock()
 
-		v.mb.views[v.Hwnd] = v
-		v.mb.windows[v.Window.Hwnd] = v.Window
-	}()
+	v.mb.views[v.Hwnd] = v
+	v.mb.windows[v.Window.Hwnd] = v.Window
+
+	logInfo("Add view to BLINK, now SIZE: %d", len(v.mb.views))
 
 	v.OnDestroy(func() {
 
@@ -172,14 +170,6 @@ func (v *View) GetWindowHandle() WkeHandle {
 
 func (v *View) Resize(width, height int32) {
 	v.mb.CallFunc("wkeResize", uintptr(v.Hwnd), uintptr(width), uintptr(height))
-}
-
-// 返回 true 标识已处理
-func (v *View) DispatchMessage(msg *win.MSG) bool {
-
-	// do something...
-
-	return false
 }
 
 func (v *View) registerFileSystem() {

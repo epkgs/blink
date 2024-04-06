@@ -27,7 +27,7 @@ func main() {
 
 	view.EnableBorderResize()
 
-	view.LoadURL("http://local/no-border.html")
+	view.LoadURL("http://local/flameless.html")
 
 	view.ShowWindow()
 
@@ -39,5 +39,5 @@ func main() {
 		fmt.Printf("custom zone hover\n")
 	})
 
-	app.Run()
+	app.KeepRunning()
 }

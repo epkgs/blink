@@ -4,6 +4,6 @@ use (
 	.
 	./samples/baidu
 	./samples/call-js
-	./samples/no-border
+	./samples/flameless
 	./samples/transparent
 )

@@ -80,6 +80,8 @@ func (mb *Blink) Free() {
 		v.DestroyWindow()
 	}
 
+	close(mb.quit)
+
 	mb.Finalize()
 	mb.dll.Release()
 }
@@ -123,23 +125,6 @@ func (mb *Blink) GetWindowByHandle(windowHwnd WkeHandle) *Window {
 	return window
 }
 
-// 返回 true 则代表已处理 msg，不需要继续执行
-func (mb *Blink) DispatchMessage(msg *win.MSG) bool {
-
-	view := mb.GetViewByHandle(WkeHandle(msg.HWnd))
-	if view != nil {
-		return view.DispatchMessage(msg)
-	}
-
-	window := mb.GetWindowByHandle(WkeHandle(msg.HWnd))
-	if window != nil {
-		return window.DispatchMessage(msg)
-	}
-
-	return false
-
-}
-
 func (mb *Blink) AddJob(job func()) chan bool {
 	done := make(chan bool)
 	mb.jobs <- BlinkJob{
@@ -150,46 +135,34 @@ func (mb *Blink) AddJob(job func()) chan bool {
 	return done
 }
 
-func (mb *Blink) Run() {
+func (mb *Blink) KeepRunning() {
 
 	runtime.LockOSThread()
-	defer func() {
-		mb.Free()
-		runtime.UnlockOSThread()
-	}()
 
 	msg := &win.MSG{}
 
-	func() {
+	for {
+		select {
+		case <-mb.quit:
+			return
 
-		for {
-			select {
-			case <-mb.quit:
-				logInfo("Exit APP")
+		case bj := <-mb.jobs:
+			logInfo("received job")
+			bj.job()
+			close(bj.done)
+			logInfo("Job done!!!")
+
+		default:
+
+			if win.GetMessage(msg, 0, 0, 0) <= 0 {
 				return
-
-			case bj := <-mb.jobs:
-				logInfo("received job")
-				bj.job()
-				close(bj.done)
-				logInfo("Job done!!!")
-
-			default:
-
-				if win.GetMessage(msg, 0, 0, 0) <= 0 {
-					return
-				}
-
-				win.TranslateMessage(msg)
-
-				if mb.DispatchMessage(msg) {
-					continue
-				}
-
-				win.DispatchMessage(msg)
 			}
+
+			win.TranslateMessage(msg)
+
+			win.DispatchMessage(msg)
 		}
-	}()
+	}
 
 }
 
