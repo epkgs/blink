@@ -91,29 +91,32 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 }
 
 func (v *View) addToPool() {
-	locker.Lock()
-	defer locker.Unlock()
 
-	v.mb.views[v.Hwnd] = v
-	v.mb.windows[v.Window.Hwnd] = v.Window
-
-	v.OnDestroy(func() {
+	func() {
 		locker.Lock()
 		defer locker.Unlock()
 
-		if v.DevTools != nil {
-			v.DevTools.DestroyWindow()
-		}
+		v.mb.views[v.Hwnd] = v
+		v.mb.windows[v.Window.Hwnd] = v.Window
+	}()
 
-		delete(v.mb.windows, v.Window.Hwnd)
-		delete(v.mb.views, v.Hwnd)
+	v.OnDestroy(func() {
 
-		// 删除子view
+		func() {
+			locker.Lock()
+			defer locker.Unlock()
+
+			delete(v.mb.windows, v.Window.Hwnd)
+			delete(v.mb.views, v.Hwnd)
+
+		}()
+
 		for _, child := range v.mb.views {
 			if child.parent == v {
 				child.DestroyWindow()
 			}
 		}
+
 	})
 }
 
