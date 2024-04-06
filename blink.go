@@ -75,6 +75,11 @@ func (mb *Blink) Exit() {
 }
 
 func (mb *Blink) Free() {
+
+	for _, v := range mb.views {
+		v.DestroyWindow()
+	}
+
 	mb.Finalize()
 	mb.dll.Release()
 }
