@@ -54,7 +54,12 @@ func (ipc *IPC) registerJSHandler() {
 					Args:    args,
 				},
 			}
-			msgTxt, _ := json.Marshal(msg)
+			msgTxt, err := json.Marshal(msg)
+
+			if err != nil {
+				logError("IPC: registerJSHandlerReply: json.Marshal: %v", err)
+			}
+
 			result := make(chan any, 1)
 			ipc.jsHandlerReply[key] = result // 暂存 result channel
 			script := fmt.Sprintf(`window.top['%s'](%q)`, JS_HANDLE_PROCESS, string(msgTxt))
@@ -94,7 +99,10 @@ func (ipc *IPC) invokeJS(view *View, key string, msg IPCMessage) {
 		Data: res,
 	}
 
-	jsmsgTxt, _ := json.Marshal(jsmsg)
+	jsmsgTxt, err := json.Marshal(jsmsg)
+	if err != nil {
+		logError("IPC: invokeJS: json.Marshal: %v", err)
+	}
 
 	script := fmt.Sprintf(`window.top['%s'](%q)`, JS_JS2GO_REPLY, string(jsmsgTxt))
 

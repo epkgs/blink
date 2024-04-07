@@ -45,17 +45,21 @@ func main() {
 func timeTask(app *blink.Blink) {
 	//这里模拟go中触发js监听的事件
 	var param0 = 0
+
 	for {
 		//每1秒钟执行一次
 		time.Sleep(time.Second)
-		fmt.Println("timeTask", param0)
-		param0++
-		//将数据发送出去
-		app.IPC.Invoke("js-on-event-demo", fmt.Sprintf("Go发送的数据: %d", param0), float64(param0+10))
-		// 如果JS返回结果, 需要通过回调函数入参方式接收返回值
-		res := app.IPC.Invoke("js-on-event-demo-return", []interface{}{fmt.Sprintf("Go发送的数据: %d", param0), float64(param0 + 10)})
 
-		//需要正确的获取类型，否则会失败
-		fmt.Println("JS返回数据:", res.(string))
+		app.AddJob(func() {
+
+			fmt.Println("timeTask", param0)
+			param0++
+			//将数据发送出去
+			app.IPC.Invoke("js-on-event-demo", param0, float64(param0+10), "this is a test")
+			// ! 如需要正确的获取类型，请注意断言正确类型，否则将会导致 panic
+			res := app.IPC.Invoke("js-on-event-demo-return", param0, float64(param0+10))
+
+			fmt.Printf("JS返回数据: %v\n", res)
+		})
 	}
 }

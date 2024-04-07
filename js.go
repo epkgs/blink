@@ -77,7 +77,10 @@ func (js *JS) registerJS2GO() {
 		view := js.mb.GetViewByJsExecState(es)
 
 		msg.Data = data
-		msgTxt, _ := json.Marshal(msg)
+		msgTxt, err := json.Marshal(msg)
+		if err != nil {
+			logError("registerJS2GO with err: %v", err)
+		}
 
 		// 将返回值返回给 JS
 		script := fmt.Sprintf(`window.top['%s'](%q)`, JS_JS2GO_REPLY, string(msgTxt))
@@ -174,27 +177,6 @@ func (js *JS) registerBootScript() {
 
 	js.mb.AddBootScript(script)
 }
-
-// func (js *JS) replayGO2JS() {
-// 	js.bindFunction(JS_REPLY_GO2JS, 1, func(es JsExecState) {
-// 		arg := js.Arg(es, 0)
-// 		txt := js.ToString(es, arg)
-// 		msg := &JsMessage{}
-// 		json.Unmarshal(([]byte)(txt), msg)
-
-// 	})
-// }
-
-// func (js *JS) registerTunnelGO2JS() {
-// 	js.bindFunction(JS_TUNNEL_GO2JS, 1, func(es JsExecState) {
-// 		arg := js.Arg(es, 0)
-// 		txt := js.ToString(es, arg)
-// 		msg := &JsMessage{}
-// 		json.Unmarshal(([]byte)(txt), msg)
-
-// 		js.mb.mb.Emit(msg.Selector, msg.EventType)
-// 	})
-// }
 
 func (js *JS) addMessageHandler(key string, callback JsMessageHandler) {
 	locker.Lock()

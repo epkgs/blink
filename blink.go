@@ -130,7 +130,7 @@ func (mb *Blink) GetWindowByHandle(windowHwnd WkeHandle) *Window {
 }
 
 func (mb *Blink) AddJob(job func()) chan bool {
-	done := make(chan bool)
+	done := make(chan bool, 1)
 	mb.jobs <- BlinkJob{
 		job,
 		done,
@@ -154,7 +154,6 @@ func (mb *Blink) KeepRunning() {
 			logInfo("received job")
 			bj.job()
 			close(bj.done)
-			logInfo("Job done!!!")
 
 		default:
 
