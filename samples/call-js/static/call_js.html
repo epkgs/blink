@@ -80,7 +80,7 @@
         </ul>
         <ol>
             <li>Go调用</li>
-            <li>CallJsFunc(nil, "func_1", "张三", 18)</li>
+            <li>view.RunJsFunc("func_1", "张三", 18)</li>
         </ol>
     </fieldset>
     <fieldset>
@@ -92,11 +92,9 @@
             <li>}</li>
         </ul>
         <ol>
-            <li>Go调用</li>
-            <li>cb := func(result any) { </li>
-            <li class="sj-1">fmt.Printf("func_2 result is %s\n", result.(string)) </li>
-            <li>}</li>
-            <li>CallJsFunc(cb, "func_2")</li>
+            <li>resp2 := view.RunJsFunc("func_2")</li>
+            <li>result2 := (<-resp2).(string) // wait for result</li>
+            <li>fmt.Printf("func_2 result is %s", result2)</li>
         </ol>
     </fieldset>
     <fieldset>
@@ -109,11 +107,9 @@
         </ul>
         <ol>
             <li>Go调用</li>
-            <li>cb := func(result any) {</li>
-            <li class="sj-1">bytes, _ := json.Marshal(result.(map[string]any))</li>
-            <li class="sj-1">fmt.Printf("func_3 result is %s\n", string(bytes))</li>
-            <li>}</li>
-            <li>CallJsFunc(cb, "func_3")</li>
+            <li>resp3 := view.RunJsFunc("func_3")</li>
+            <li>result3 := (<-resp3).(map[string]any) // wait for result</li>
+            <li>fmt.Printf("func_3 result is %v", result3)</li>
         </ol>
     </fieldset>
 </body>

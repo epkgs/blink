@@ -351,7 +351,9 @@ func (v *View) RunJS(script string) {
 
 }
 
-func (v *View) CallJsFunc(callback func(result any), funcName string, args ...any) {
+func (v *View) RunJsFunc(funcName string, args ...any) chan any {
+
+	res := make(chan any, 1)
 
 	key := RandString(8)
 
@@ -375,7 +377,8 @@ func (v *View) CallJsFunc(callback func(result any), funcName string, args ...an
 	jsonBytes, err := json.Marshal(&msg)
 
 	if err != nil {
-		return
+		res <- nil
+		return res
 	}
 
 	jsonTxt := string(jsonBytes)
@@ -386,18 +389,17 @@ func (v *View) CallJsFunc(callback func(result any), funcName string, args ...an
 		funcName,
 	)
 
-	if callback != nil {
-
-		var jsCallback JsCallback = func(result any) {
-			callback(result)
-			v.mb.JS.removeCallback(key)
-		}
-
-		// 注册callback
-		v.mb.JS.AddCallback(key, jsCallback)
+	var jsCallback JsCallback = func(result any) {
+		res <- result
+		v.mb.js.removeCallback(key)
 	}
 
+	// 注册callback
+	v.mb.js.addCallback(key, jsCallback)
+
 	v.RunJS(script)
+
+	return res
 }
 
 func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) {
@@ -455,7 +457,7 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 	}
 
 	// 注册callback
-	v.mb.JS.AddCallback(key, jsCallback)
+	v.mb.js.addCallback(key, jsCallback)
 
 	v.RunJS(script)
 
@@ -464,7 +466,7 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 func (v *View) RemoveEventListener(selector, eventType string) {
 	key := strconv.FormatUint(uint64(v.Hwnd), 10) + " " + selector + " " + eventType
 
-	v.mb.JS.removeCallback(key)
+	v.mb.js.removeCallback(key)
 }
 
 func (v *View) listenMinBtnClick() {
