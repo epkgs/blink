@@ -18,7 +18,9 @@ type BlinkJob struct {
 
 type Blink struct {
 	Config *Config
-	js     *JS
+	IPC    *IPC
+
+	js *JS
 
 	Resource   *ResourceLoader
 	Downloader *Downloader
@@ -66,6 +68,8 @@ func NewApp(setups ...func(*Config)) *Blink {
 	}
 
 	blink.js = newJS(blink)
+
+	blink.IPC = newIPC(blink)
 
 	return blink
 }

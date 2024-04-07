@@ -2,6 +2,7 @@ package blink
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -10,9 +11,18 @@ import (
 )
 
 type BindFunctionCallback func(es JsExecState)
-type JsCallback func(result any)
+type JsMessageHandler func(data any) (result any)
 
-const JS_MSG_FUNC = "__mb_message"
+const JS_JS2GO = "__js2go" // ! INJECT
+const JS_JS2GO_REPLY = "__js2go_reply"
+const JS_JS2GO_REPLY_WAITING = "__js2go_reply_waiting"
+const JS_IPC = "ipc"
+const JS_IPC_INVOKE = "invoke"                           // 调用
+const JS_IPC_HANDLE = "handle"                           // 声明handler
+const JS_HANDLE_CACHE = "__handle_cache"                 // 处理handler缓存
+const JS_HANDLE_REGISTER = "__handle_register"           // ! INJECT 注册到 GO 端
+const JS_HANDLE_PROCESS = "__handle_process"             // ? view 的 RunJS 执行 handler
+const JS_HANDLE_PROCESS_REPLY = "__handle_process_reply" // ! INJECT
 
 type JsMessage struct {
 	Key  string `json:"key"`
@@ -27,50 +37,177 @@ type JsEvent struct {
 type JS struct {
 	mb *Blink
 
-	callbacks map[string]JsCallback
+	jsMsgHandlers map[string]JsMessageHandler
 }
 
 func newJS(blink *Blink) *JS {
 	js := &JS{
-		mb:        blink,
-		callbacks: make(map[string]JsCallback),
+		mb:            blink,
+		jsMsgHandlers: make(map[string]JsMessageHandler),
 	}
 
-	js.bindGO()
+	js.registerJS2GO()
+	js.registerBootScript()
 
 	return js
 }
 
 // 和 GO 的绑定
-func (js *JS) bindGO() {
-	js.bindFunction(JS_MSG_FUNC, 1, func(es JsExecState) {
+func (js *JS) registerJS2GO() {
+	js.bindFunction(JS_JS2GO, 1, func(es JsExecState) {
 		arg := js.Arg(es, 0)
 		txt := js.ToString(es, arg)
 		msg := &JsMessage{}
 		json.Unmarshal(([]byte)(txt), msg)
 
-		callback, exist := js.callbacks[msg.Key]
+		if ipcMsg, ok := msg.Data.(IPCMessage); ok {
+			view := js.mb.GetViewByJsExecState(es)
+			js.mb.Ipc.invokeJS(view, msg.Key, ipcMsg)
+			return
+		}
+
+		callback, exist := js.jsMsgHandlers[msg.Key]
 
 		if !exist {
 			return
 		}
 
-		callback(msg.Data)
+		data := callback(msg.Data)
+
+		view := js.mb.GetViewByJsExecState(es)
+
+		msg.Data = data
+		msgTxt, _ := json.Marshal(msg)
+
+		// 将返回值返回给 JS
+		script := fmt.Sprintf(`window.top['%s'](%q)`, JS_JS2GO_REPLY, string(msgTxt))
+		view.RunJS(script)
 	})
 }
 
-func (js *JS) addCallback(key string, callback JsCallback) {
-	locker.Lock()
-	defer locker.Unlock()
+func (js *JS) registerBootScript() {
+	script := `
+	(() => {
+		const JS_JS2GO = '%s';
+		const JS_JS2GO_REPLY = '%s';
+		const JS_JS2GO_REPLY_WAITING = '%s';
+		const JS_IPC = '%s';
+		const JS_IPC_INVOKE = '%s';
+		const JS_IPC_HANDLE = '%s';
+		const JS_HANDLE_CACHE = '%s';
+		const JS_HANDLE_REGISTER = '%s';
+		const JS_HANDLE_PROCESS = '%s';
+		const JS_HANDLE_PROCESS_REPLY = '%s';
+	
+	
+		window.top[JS_IPC] = window.top[JS_IPC] || {}
+		window.top[JS_HANDLE_CACHE] = window.top[JS_HANDLE_CACHE] || {};
+		window.top[JS_JS2GO_REPLY_WAITING] = window.top[JS_JS2GO_REPLY_WAITING] || {}
+	
+		function generateRandomString() {
+			let characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+			let randomString = '';
+			for (let i = 0; i < 8; i++) {
+				let randomIndex = Math.floor(Math.random() * characters.length);
+				randomString += characters.charAt(randomIndex);
+			}
+			return randomString;
+		}
+		function newMsg(data) {
+			return {
+				key: generateRandomString(),
+				data: data
+			}
+		}
+	
+		// 返回值
+		window.top[JS_JS2GO_REPLY] = (msgTxt) => {
+			msg = JSON.parse(msgTxt)
+			const waiting = window.top[JS_JS2GO_REPLY_WAITING]
+			const p = waiting[msg.key]
+			if (!p) return;
+			p.resolve(msg.data)
+		}
+	
+		// 调用
+		window.top[JS_IPC][JS_IPC_INVOKE] = (channel, args = []) => {
+			const fn = window.top[JS_JS2GO] || (() => { });
+			const msg = newMsg({ channel, args });
+			return new Promise((resolve, reject) => {
+				window.top[JS_JS2GO_REPLY_WAITING][msg.key] = { resolve, reject }
+				fn(JSON.stringify(msg))
+			})
+		}
+	
+		// 声明handler
+		window.top[JS_IPC][JS_IPC_HANDLE] = (channel, handler) => {
+			window.top[JS_HANDLE_CACHE][channel] = handler;
+			window.top[JS_HANDLE_REGISTER](channel)
+		}
 
-	js.callbacks[key] = callback
+		// 执行handler
+		window.top[JS_HANDLE_PROCESS] = (msgTxt) => {
+			const msg = JSON.parse(msgTxt);
+			const { channel, args = [] } = msg.data || {};
+			if (!channel) return;
+			const handler = window.top[JS_HANDLE_CACHE][channel];
+			if (!handler) return;
+			const res = handler(...args);
+			window.top[JS_HANDLE_PROCESS_REPLY](JSON.stringify({ key: msg.key, data: res }))
+		}
+	})();
+	`
+
+	script = fmt.Sprintf(
+		script,
+		JS_JS2GO,
+		JS_JS2GO_REPLY,
+		JS_JS2GO_REPLY_WAITING,
+		JS_IPC,
+		JS_IPC_INVOKE,
+		JS_IPC_HANDLE,
+		JS_HANDLE_CACHE,
+		JS_HANDLE_REGISTER,
+		JS_HANDLE_PROCESS,
+		JS_HANDLE_PROCESS_REPLY,
+	)
+
+	js.mb.AddBootScript(script)
 }
 
-func (js *JS) removeCallback(key string) {
+// func (js *JS) replayGO2JS() {
+// 	js.bindFunction(JS_REPLY_GO2JS, 1, func(es JsExecState) {
+// 		arg := js.Arg(es, 0)
+// 		txt := js.ToString(es, arg)
+// 		msg := &JsMessage{}
+// 		json.Unmarshal(([]byte)(txt), msg)
+
+// 	})
+// }
+
+// func (js *JS) registerTunnelGO2JS() {
+// 	js.bindFunction(JS_TUNNEL_GO2JS, 1, func(es JsExecState) {
+// 		arg := js.Arg(es, 0)
+// 		txt := js.ToString(es, arg)
+// 		msg := &JsMessage{}
+// 		json.Unmarshal(([]byte)(txt), msg)
+
+// 		js.mb.mb.Emit(msg.Selector, msg.EventType)
+// 	})
+// }
+
+func (js *JS) addMessageHandler(key string, callback JsMessageHandler) {
 	locker.Lock()
 	defer locker.Unlock()
 
-	delete(js.callbacks, key)
+	js.jsMsgHandlers[key] = callback
+}
+
+func (js *JS) removeMessageHandler(key string) {
+	locker.Lock()
+	defer locker.Unlock()
+
+	delete(js.jsMsgHandlers, key)
 }
 
 func (js *JS) bindFunction(funcName string, funcArgCount uint32, callback BindFunctionCallback) {

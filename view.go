@@ -34,6 +34,8 @@ type View struct {
 	onDocumentReadyCallbacks map[string]OnDocumentReadyCallback
 	onTitleChangedCallbacks  map[string]OnTitleChangedCallback
 	onDownloadCallbacks      map[string]OnDownloadCallback
+
+	onDidCreateScriptContextCallbacks map[string]OnDidCreateScriptContextCallback
 }
 
 func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*View) *View {
@@ -56,6 +58,8 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 		onDocumentReadyCallbacks: make(map[string]OnDocumentReadyCallback),
 		onTitleChangedCallbacks:  make(map[string]OnTitleChangedCallback),
 		onDownloadCallbacks:      make(map[string]OnDownloadCallback),
+
+		onDidCreateScriptContextCallbacks: make(map[string]OnDidCreateScriptContextCallback),
 	}
 
 	view.Window = newWindow(mb, view, windowType)
@@ -72,6 +76,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 	view.registerOnDocumentReady()
 	view.registerOnTitleChanged()
 	view.registerOnDownload()
+	view.registerOnDidCreateScriptContext()
 
 	view.listenMinBtnClick()
 	view.listenMaxBtnClick()
@@ -79,6 +84,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 	view.listenCaptionDrag()
 
 	view.addToPool()
+	view.injectBootScripts()
 
 	// 添加默认下载操作
 	view.OnDownload(func(url string) {
@@ -115,6 +121,18 @@ func (v *View) addToPool() {
 			}
 		}
 
+	})
+}
+
+func (v *View) injectBootScripts() {
+	var script string
+
+	for _, s := range v.mb.bootScripts {
+		script += s + ";\n"
+	}
+
+	v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
+		v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
 	})
 }
 
@@ -342,18 +360,23 @@ func (v *View) RunJS(script string) {
 		return
 	}
 
-	v.OnDocumentReady(func(frame WkeWebFrameHandle) {
+	var stop func()
+	stop = v.OnDocumentReady(func(frame WkeWebFrameHandle) {
 		if !v.IsMainFrame(frame) {
 			return
 		}
 		v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
+
+		if stop != nil {
+			stop()
+		}
 	})
 
 }
 
-func (v *View) RunJsFunc(funcName string, args ...any) chan any {
+func (v *View) RunJsFunc(funcName string, args ...any) (result chan any) {
 
-	res := make(chan any, 1)
+	result = make(chan any, 1)
 
 	key := RandString(8)
 
@@ -377,38 +400,51 @@ func (v *View) RunJsFunc(funcName string, args ...any) chan any {
 	jsonBytes, err := json.Marshal(&msg)
 
 	if err != nil {
-		res <- nil
-		return res
+		result <- nil
+		return result
 	}
 
 	jsonTxt := string(jsonBytes)
 
 	script = fmt.Sprintf(script,
-		JS_MSG_FUNC,
+		JS_JS2GO,
 		jsonTxt,
 		funcName,
 	)
 
-	var jsCallback JsCallback = func(result any) {
-		res <- result
-		v.mb.js.removeCallback(key)
+	var jsCallback JsMessageHandler = func(res any) any {
+		result <- res
+		v.mb.js.removeMessageHandler(key)
+		close(result)
+		return nil
 	}
 
 	// 注册callback
-	v.mb.js.addCallback(key, jsCallback)
+	v.mb.js.addMessageHandler(key, jsCallback)
 
 	v.RunJS(script)
 
-	return res
+	return result
 }
 
-func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) {
+func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) (stop func()) {
+
+	key := RandString(8)
+	v.onDidCreateScriptContextCallbacks[key] = callback
+
+	return func() {
+		delete(v.onDidCreateScriptContextCallbacks, key)
+	}
+}
+func (v *View) registerOnDidCreateScriptContext() {
 
 	var cb WkeDidCreateScriptContextCallback = func(view WkeHandle, param uintptr, frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) (voidRes uintptr) {
-		callback(frame, context, exGroup, worldId)
+
+		for _, callback := range v.onDidCreateScriptContextCallbacks {
+			callback(frame, context, exGroup, worldId)
+		}
 		return 0
 	}
-
 	v.mb.CallFunc("wkeOnDidCreateScriptContext", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 }
 
@@ -434,8 +470,7 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 	msgTxt := string(msgBytes)
 
 	script := `
-		const rootWin = window.top || window.parent || window;
-		const tunnel = rootWin['%s'] || (function(e) { });
+		const tunnel = window.top['%s'] || (function(e) { });
 		const args = %s
 		const els = document.querySelectorAll(args.data.selector);
 		const handler = function(e) { %s; e.preventDefault(); tunnel(%q); };
@@ -446,18 +481,19 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 	`
 
 	script = fmt.Sprintf(script,
-		JS_MSG_FUNC,
+		JS_JS2GO,
 		msgTxt,
 		strings.Join(preScripts, ";"),
 		msgTxt,
 	)
 
-	var jsCallback JsCallback = func(args any) {
+	var jsCallback JsMessageHandler = func(args any) any {
 		callback()
+		return nil
 	}
 
 	// 注册callback
-	v.mb.js.addCallback(key, jsCallback)
+	v.mb.js.addMessageHandler(key, jsCallback)
 
 	v.RunJS(script)
 
@@ -466,7 +502,7 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 func (v *View) RemoveEventListener(selector, eventType string) {
 	key := strconv.FormatUint(uint64(v.Hwnd), 10) + " " + selector + " " + eventType
 
-	v.mb.js.removeCallback(key)
+	v.mb.js.removeMessageHandler(key)
 }
 
 func (v *View) listenMinBtnClick() {
