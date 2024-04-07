@@ -43,7 +43,7 @@ func newJS(blink *Blink) *JS {
 
 // 和 GO 的绑定
 func (js *JS) bindGO() {
-	js.BindFunction(JS_MSG_FUNC, 1, func(es JsExecState) {
+	js.bindFunction(JS_MSG_FUNC, 1, func(es JsExecState) {
 		arg := js.Arg(es, 0)
 		txt := js.ToString(es, arg)
 		msg := &JsMessage{}
@@ -59,7 +59,7 @@ func (js *JS) bindGO() {
 	})
 }
 
-func (js *JS) AddCallback(key string, callback JsCallback) {
+func (js *JS) addCallback(key string, callback JsCallback) {
 	locker.Lock()
 	defer locker.Unlock()
 
@@ -73,7 +73,7 @@ func (js *JS) removeCallback(key string) {
 	delete(js.callbacks, key)
 }
 
-func (js *JS) BindFunction(funcName string, funcArgCount uint32, callback BindFunctionCallback) {
+func (js *JS) bindFunction(funcName string, funcArgCount uint32, callback BindFunctionCallback) {
 	var cb WkeJsNativeFunction = func(es JsExecState, param uintptr) (voidRes uintptr) {
 
 		callback(es)

@@ -18,7 +18,7 @@ type BlinkJob struct {
 
 type Blink struct {
 	Config *Config
-	JS     *JS
+	js     *JS
 
 	Resource   *ResourceLoader
 	Downloader *Downloader
@@ -65,7 +65,7 @@ func NewApp(setups ...func(*Config)) *Blink {
 		blink.Initialize()
 	}
 
-	blink.JS = newJS(blink)
+	blink.js = newJS(blink)
 
 	return blink
 }
@@ -278,7 +278,7 @@ func (mb *Blink) NetSetData(job WkeNetJob, buf []byte) {
 }
 
 func (mb *Blink) GetViewByJsExecState(es JsExecState) *View {
-	handle := mb.JS.GetWebView(es)
+	handle := mb.js.GetWebView(es)
 	return mb.GetViewByHandle(handle)
 }
 

@@ -42,7 +42,7 @@ func NewDownloader(threads int) *Downloader {
 	}
 }
 
-func (d *Downloader) Download(url string) {
+func (d *Downloader) Download(url string) error {
 	job := &DownloadJob{
 
 		Downloader: d,
@@ -54,39 +54,38 @@ func (d *Downloader) Download(url string) {
 		supportRange: false,
 	}
 
+	if err := job.fetchInfo(); err != nil {
+		job.msgErr("获取文件信息出错：" + err.Error())
+		return err
+	}
+
 	d.lastJobId++
 
 	job.logInfo("创建任务 %s", url)
 
-	go func() {
-		if target, ok := openSaveFileDialog(job.target); ok {
-			job.target = target
-		} else {
-			job.logInfo("用户取消保存。")
-			return
-		}
+	if target, ok := openSaveFileDialog(job.target); ok {
+		job.target = target
+	} else {
+		job.logInfo("用户取消保存。")
+		return nil
+	}
 
-		if err := job.fetchInfo(); err != nil {
-			job.msgErr("获取文件信息出错：" + err.Error())
-			return
+	if job.supportRange {
+		job.logInfo("支持断点续传，线程：%d", job.Downloader.threads)
+		if err := job.multiThreadDownload(); err != nil {
+			job.msgErr(err.Error())
+			return err
 		}
-
-		if job.supportRange {
-			job.logInfo("支持断点续传，线程：%d", job.Downloader.threads)
-			if err := job.multiThreadDownload(); err != nil {
-				job.msgErr(err.Error())
-				return
-			}
-		} else {
-			job.logInfo("不支持断点续传，将以单进程模式下载。")
-			if err := job.singleThreadDownload(); err != nil {
-				job.msgErr(err.Error())
-				return
-			}
+	} else {
+		job.logInfo("不支持断点续传，将以单进程模式下载。")
+		if err := job.singleThreadDownload(); err != nil {
+			job.msgErr(err.Error())
+			return err
 		}
+	}
 
-		job.logInfo("下载完成：%s", job.target)
-	}()
+	job.logInfo("下载完成：%s", job.target)
+	return nil
 }
 
 func (job *DownloadJob) logInfo(tpl string, vars ...any) {
