@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/lxn/win"
+	"github.com/epkgs/mini-blink/internal/log"
 )
 
 type WM_SIZING uint16
@@ -105,13 +106,13 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		case WM_TRAYNOTIFY:
 
 			if lparam == win.WM_LBUTTONDBLCLK {
-				logInfo("Tray icon double clicked")
+				log.Info("Tray icon double clicked")
 				w.Restore()
 				return true
 			}
 
 			if lparam == win.WM_RBUTTONUP {
-				logInfo("Right click tray icon")
+				log.Info("Right click tray icon")
 				if w.useSimpleTrayMenu {
 					w.showSimpleTrayMenu()
 					return true
@@ -122,11 +123,11 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			menuID := LOWORD(uint32(wparam))
 			switch menuID {
 			case ID_TRAYMENU_RESTORE:
-				logInfo("Restore menu item clicked")
+				log.Info("Restore menu item clicked")
 				w.Restore()
 				return true
 			case ID_TRAYMENU_EXIT:
-				logInfo("Exit menu item clicked")
+				log.Info("Exit menu item clicked")
 				// w.Hide()
 				w.Destroy()
 				return true
@@ -294,7 +295,7 @@ func (w *Window) EnableTray(setups ...func(*win.NOTIFYICONDATA)) {
 	win.Shell_NotifyIcon(win.NIM_ADD, &w.nid)
 
 	w.view.OnDestroy(func() {
-		logInfo("RemoveTray in view OnDestroy event")
+		log.Info("RemoveTray in view OnDestroy event")
 		w.RemoveTray()
 	})
 }

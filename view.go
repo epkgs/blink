@@ -1,7 +1,6 @@
 package blink
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -30,6 +29,8 @@ type View struct {
 	mb     *Blink
 	parent *View
 
+	eventCallbacks map[string]func()
+
 	onClosingCallbacks       map[string]OnClosingCallback
 	onDestroyCallbacks       map[string]OnDestroyCallback
 	onLoadUrlBeginCallbacks  map[string]OnLoadUrlBeginCallback
@@ -53,6 +54,8 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 		mb:     mb,
 		Hwnd:   hwnd,
 		parent: p,
+
+		eventCallbacks: make(map[string]func()),
 
 		onClosingCallbacks:       make(map[string]OnClosingCallback),
 		onDestroyCallbacks:       make(map[string]OnDestroyCallback),
@@ -379,55 +382,7 @@ func (v *View) RunJS(script string) {
 
 func (v *View) RunJsFunc(funcName string, args ...any) (result chan any) {
 
-	result = make(chan any, 1)
-
-	key := utils.RandString(8)
-
-	script := `
-	const rootWin = window.top || window.parent || window;
-	const tunnel = rootWin['%s'] || (function(e) { });
-	const msg = %s;
-	msg.data = %s(...msg.data);
-	tunnel(JSON.stringify(msg));
-	`
-
-	msg := &JsMessage{
-		Key:  key,
-		Data: args,
-	}
-
-	if args == nil {
-		msg.Data = []any{}
-	}
-
-	jsonBytes, err := json.Marshal(&msg)
-
-	if err != nil {
-		result <- nil
-		return result
-	}
-
-	jsonTxt := string(jsonBytes)
-
-	script = fmt.Sprintf(script,
-		JS_JS2GO,
-		jsonTxt,
-		funcName,
-	)
-
-	var jsCallback JsMessageHandler = func(res any) any {
-		result <- res
-		v.mb.js.removeMessageHandler(key)
-		close(result)
-		return nil
-	}
-
-	// 注册callback
-	v.mb.js.addMessageHandler(key, jsCallback)
-
-	v.RunJS(script)
-
-	return result
+	return v.mb.IPC.RunJSFunc(v, funcName, args...)
 }
 
 func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) (stop func()) {
@@ -454,58 +409,84 @@ func (v *View) registerOnDidCreateScriptContext() {
 // JS.bind(".mb-minimize-btn", "click", func)
 func (v *View) AddEventListener(selector, eventType string, callback func(), preScripts ...string) {
 
-	key := strconv.FormatUint(uint64(v.Hwnd), 10) + " " + selector + " " + eventType
-
-	msg := &JsMessage{
-		Key: key,
-		Data: JsEvent{
-			Selector:  selector,
-			EventType: eventType,
-		},
-	}
-
-	msgBytes, err := json.Marshal(msg)
-
-	if err != nil {
-		return
-	}
-
-	msgTxt := string(msgBytes)
-
 	script := `
-		const tunnel = window.top['%s'] || (function(e) { });
-		const args = %s
-		const els = document.querySelectorAll(args.data.selector);
-		const handler = function(e) { %s; e.preventDefault(); tunnel(%q); };
-		for (const el of els) {
-			el.removeEventListener(args.data.eventType, handler);
-			el.addEventListener(args.data.eventType, handler);
+	(()=>{
+		const VIEW_HANDLE = '%s';
+		const JS_IPC = '%s';
+		const selector = '%s';
+		const eventType = '%s';
+		
+		const els = document.querySelectorAll(selector);
+		
+		const handler = function(e) {
+			%s; // pre-event
+		
+			e.preventDefault();
+		
+			const ipc = window.top[JS_IPC]
+			ipc.sent('addEventListener', VIEW_HANDLE, selector, eventType)
+		};
+		
+		for (let i = 0; i < els.length; i++) {
+			els[i].removeEventListener(eventType, handler);
+			els[i].addEventListener(eventType, handler);
 		}
+	
+	})();
 	`
 
-	script = fmt.Sprintf(script,
-		JS_JS2GO,
-		msgTxt,
+	script = fmt.Sprintf(
+		script,
+		strconv.FormatUint(uint64(v.Hwnd), 10),
+		JS_IPC,
+		selector,
+		eventType,
 		strings.Join(preScripts, ";"),
-		msgTxt,
 	)
 
-	var jsCallback JsMessageHandler = func(args any) any {
-		callback()
-		return nil
+	if !v.mb.IPC.HasChannel("addEventListener") {
+
+		v.mb.IPC.Handle("addEventListener", func(args ...any) any {
+			hwndStr := args[0].(string)
+			hwnd, err := strconv.Atoi(hwndStr)
+			if err != nil {
+				log.Error("hwnd 转换失败：%s", err.Error())
+				return nil
+			}
+
+			selector := args[1].(string)
+			eventType := args[2].(string)
+
+			view := v.mb.GetViewByHandle(WkeHandle(hwnd))
+			if view == nil {
+				return nil
+			}
+
+			key := selector + " " + eventType
+
+			callback, exist := view.eventCallbacks[key]
+			if !exist {
+				return nil
+			}
+
+			callback()
+			return nil
+		})
+
 	}
 
-	// 注册callback
-	v.mb.js.addMessageHandler(key, jsCallback)
+	key := selector + " " + eventType
+
+	v.eventCallbacks[key] = callback // 增加 callback
 
 	v.RunJS(script)
-
 }
 
 func (v *View) RemoveEventListener(selector, eventType string) {
-	key := strconv.FormatUint(uint64(v.Hwnd), 10) + " " + selector + " " + eventType
 
-	v.mb.js.removeMessageHandler(key)
+	key := selector + " " + eventType
+
+	delete(v.eventCallbacks, key)
 }
 
 func (v *View) listenMinBtnClick() {

@@ -56,10 +56,9 @@ func timeTask(app *blink.Blink) {
 			param0++
 			//将数据发送出去
 			app.IPC.Invoke("js-on-event-demo", param0, float64(param0+10), "this is a test")
-			// ! 如需要正确的获取类型，请注意断言正确类型，否则将会导致 panic
-			res := app.IPC.Invoke("js-on-event-demo-return", param0, float64(param0+10))
+			res, _ := app.IPC.Invoke("js-on-event-demo-return", param0, float64(param0+10))
 
-			fmt.Printf("JS返回数据: %v\n", res)
+			fmt.Printf("JS返回数据: %v\n", res) // ! 如需要正确的获取类型，请注意断言正确类型，否则将会导致 panic
 		})
 	}
 }
