@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/epkgs/mini-blink/internal/log"
 	"github.com/lxn/win"
 )
 
@@ -89,7 +90,7 @@ func (d *Downloader) Download(url string) error {
 }
 
 func (job *DownloadJob) logInfo(tpl string, vars ...any) {
-	logInfo(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
+	log.Info(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
 
 func (job *DownloadJob) msgErr(lines ...string) int32 {

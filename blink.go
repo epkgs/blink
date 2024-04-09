@@ -5,6 +5,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/epkgs/mini-blink/internal/log"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 )
@@ -151,7 +152,7 @@ func (mb *Blink) KeepRunning() {
 			return
 
 		case bj := <-mb.jobs:
-			logInfo("received job")
+			log.Info("received job")
 			bj.job()
 			close(bj.done)
 
@@ -190,7 +191,7 @@ func (mb *Blink) CallFunc(name string, args ...uintptr) (r1 uintptr, r2 uintptr,
 			}
 
 			err = r.(error)
-			logError("Panic by CallFunc: %s", err.Error())
+			log.Error("Panic by CallFunc: %s", err.Error())
 		}
 	}()
 

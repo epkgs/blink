@@ -1,4 +1,4 @@
-package blink
+package utils
 
 import (
 	"math/rand"

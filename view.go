@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+
+	"github.com/epkgs/mini-blink/internal/log"
+	"github.com/epkgs/mini-blink/internal/utils"
 )
 
 type OnConsoleCallback func(level int, message, sourceName string, sourceLine int, stackTrace string)
@@ -102,7 +105,7 @@ func (v *View) addToPool() {
 	v.mb.views[v.Hwnd] = v
 	v.mb.windows[v.Window.Hwnd] = v.Window
 
-	logInfo("Add view to BLINK, now SIZE: %d", len(v.mb.views))
+	log.Info("Add view to BLINK, now SIZE: %d", len(v.mb.views))
 
 	v.OnDestroy(func() {
 
@@ -221,7 +224,7 @@ func (v *View) registerFileSystem() {
 // callback 返回 false 拒绝关闭窗口
 func (v *View) OnClosing(callback OnClosingCallback) (stop func()) {
 
-	key := RandString(10)
+	key := utils.RandString(10)
 
 	v.onClosingCallbacks[key] = callback
 
@@ -231,7 +234,7 @@ func (v *View) OnClosing(callback OnClosingCallback) (stop func()) {
 }
 func (v *View) registerOnClosing() {
 	var handler WkeWindowClosingCallback = func(view WkeHandle, param uintptr) (boolRes uintptr) {
-		logInfo("Trigger view.OnClosing")
+		log.Info("Trigger view.OnClosing")
 		for _, callback := range v.onClosingCallbacks {
 			if ok := callback(); !ok {
 				return BoolToPtr(false)
@@ -245,7 +248,7 @@ func (v *View) registerOnClosing() {
 // 可以添加多个 callback，将按照加入顺序依次执行
 func (v *View) OnDestroy(callback OnDestroyCallback) (stop func()) {
 
-	key := RandString(10)
+	key := utils.RandString(10)
 
 	v.onDestroyCallbacks[key] = callback
 
@@ -255,7 +258,7 @@ func (v *View) OnDestroy(callback OnDestroyCallback) (stop func()) {
 }
 func (v *View) registerOnDestroy() {
 	var handler WkeWindowDestroyCallback = func(view WkeHandle, param uintptr) (voidRes uintptr) {
-		logInfo("Trigger view.OnDestroy")
+		log.Info("Trigger view.OnDestroy")
 		for _, callback := range v.onDestroyCallbacks {
 			callback()
 		}
@@ -266,7 +269,7 @@ func (v *View) registerOnDestroy() {
 
 func (v *View) OnLoadUrlBegin(callback OnLoadUrlBeginCallback) (stop func()) {
 
-	key := RandString(10)
+	key := utils.RandString(10)
 
 	v.onLoadUrlBeginCallbacks[key] = callback
 
@@ -291,7 +294,7 @@ func (v *View) registerOnLoadUrlBegin() {
 
 func (v *View) OnLoadUrlEnd(callback OnLoadUrlEndCallback) (stop func()) {
 
-	key := RandString(10)
+	key := utils.RandString(10)
 
 	v.onLoadUrlEndCallbacks[key] = callback
 
@@ -315,7 +318,7 @@ func (v *View) registerOnLoadUrlEnd() {
 
 func (v *View) OnDocumentReady(callback OnDocumentReadyCallback) (stop func()) {
 
-	key := RandString(10)
+	key := utils.RandString(10)
 
 	v.onDocumentReadyCallbacks[key] = callback
 
@@ -378,7 +381,7 @@ func (v *View) RunJsFunc(funcName string, args ...any) (result chan any) {
 
 	result = make(chan any, 1)
 
-	key := RandString(8)
+	key := utils.RandString(8)
 
 	script := `
 	const rootWin = window.top || window.parent || window;
@@ -429,7 +432,7 @@ func (v *View) RunJsFunc(funcName string, args ...any) (result chan any) {
 
 func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) (stop func()) {
 
-	key := RandString(8)
+	key := utils.RandString(8)
 	v.onDidCreateScriptContextCallbacks[key] = callback
 
 	return func() {
@@ -563,7 +566,7 @@ func (v *View) IsDocumentReady() bool {
 
 func (v *View) OnTitleChanged(callback OnTitleChangedCallback) (stop func()) {
 
-	key := RandString(10)
+	key := utils.RandString(10)
 
 	v.onTitleChangedCallbacks[key] = callback
 
@@ -587,7 +590,7 @@ func (v *View) registerOnTitleChanged() {
 
 func (v *View) OnDownload(callback OnDownloadCallback) (stop func()) {
 
-	key := RandString(10)
+	key := utils.RandString(10)
 
 	v.onDownloadCallbacks[key] = callback
 

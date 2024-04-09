@@ -1,6 +1,6 @@
 //go:build release && windows
 
-package blink
+package log
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 var kernel32 = syscall.NewLazyDLL("kernel32")
 var outputDebugStringW = kernel32.NewProc("OutputDebugStringW")
 
-func _log(format string, vars ...any) {
+func log(format string, vars ...any) {
 
 	s := fmt.Sprintf(format, vars...)
 
