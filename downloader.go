@@ -13,9 +13,11 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/epkgs/mini-blink/internal/log"
+	"github.com/jlaffaye/ftp"
 	"github.com/lxn/win"
 )
 
@@ -43,26 +45,96 @@ func NewDownloader(threads int) *Downloader {
 	}
 }
 
-func (d *Downloader) Download(url string) error {
+func (d *Downloader) Download(downloadUrl string) error {
 	job := &DownloadJob{
 
 		Downloader: d,
 
 		id:           d.lastJobId,
-		url:          url,
-		target:       getFileNameByUrl(url),
+		url:          downloadUrl,
+		target:       getFileNameByUrl(downloadUrl),
 		size:         0,
 		supportRange: false,
 	}
 
-	if err := job.fetchInfo(); err != nil {
-		job.msgErr("获取文件信息出错：" + err.Error())
+	urlParsed, err := url.Parse(job.url)
+	if err != nil {
 		return err
 	}
 
-	d.lastJobId++
+	if urlParsed.Scheme == "ftp" {
+		return job.downloadFtp(urlParsed)
+	}
 
-	job.logInfo("创建任务 %s", url)
+	return job.downloadHttp()
+}
+
+func (job *DownloadJob) downloadFtp(urlParsed *url.URL) error {
+
+	c, err := ftp.Dial(urlParsed.Host+urlParsed.Port(), ftp.DialWithTimeout(5*time.Second))
+	if err != nil {
+		job.logErr("打开 FTP 出错：" + err.Error())
+		return errors.New("链接 FTP 服务器出错")
+	}
+
+	username := urlParsed.User.Username()
+	password, _ := urlParsed.User.Password()
+
+	if username == "" {
+		username = "anonymous"
+	}
+
+	err = c.Login(username, password)
+	defer c.Quit()
+	if err != nil {
+		job.logErr("登录 FTP 出错：" + err.Error())
+		return errors.New("登录 FTP 出错")
+	}
+
+	job.Downloader.lastJobId++
+
+	if target, ok := openSaveFileDialog(job.target); ok {
+		job.target = target
+	} else {
+		job.logInfo("用户取消保存。")
+		return nil
+	}
+
+	job.logInfo("创建任务 %s", job.url)
+
+	r, err := c.Retr(urlParsed.Path)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	// 打开文件准备写入
+	file, err := os.Create(job.target)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	buf, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Write(buf)
+
+	return err
+}
+
+func (job *DownloadJob) downloadHttp() error {
+
+	if err := job.fetchInfo(); err != nil {
+		job.logErr("获取文件信息出错：" + err.Error())
+		return err
+	}
+
+	job.Downloader.lastJobId++
+
+	job.logInfo("创建任务 %s", job.url)
 
 	if target, ok := openSaveFileDialog(job.target); ok {
 		job.target = target
@@ -74,13 +146,13 @@ func (d *Downloader) Download(url string) error {
 	if job.supportRange {
 		job.logInfo("支持断点续传，线程：%d", job.Downloader.threads)
 		if err := job.multiThreadDownload(); err != nil {
-			job.msgErr(err.Error())
+			job.logErr(err.Error())
 			return err
 		}
 	} else {
 		job.logInfo("不支持断点续传，将以单进程模式下载。")
 		if err := job.singleThreadDownload(); err != nil {
-			job.msgErr(err.Error())
+			job.logErr(err.Error())
 			return err
 		}
 	}
@@ -93,8 +165,8 @@ func (job *DownloadJob) logInfo(tpl string, vars ...any) {
 	log.Info(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
 
-func (job *DownloadJob) msgErr(lines ...string) int32 {
-	return MessageBoxError(0, fmt.Sprintf("[下载任务 %d ]: ", job.id), lines...)
+func (job *DownloadJob) logErr(tpl string, vars ...any) {
+	log.Error(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
 
 func (job *DownloadJob) singleThreadDownload() error {
