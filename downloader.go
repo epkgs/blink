@@ -282,6 +282,14 @@ func (job *DownloadJob) fetchInfo() error {
 	}
 	defer r.Body.Close()
 
+	if r.StatusCode == 404 {
+		return fmt.Errorf("文件不存在： %s", job.url)
+	}
+
+	if r.StatusCode > 299 {
+		return fmt.Errorf("连接 %s 出错。", job.url)
+	}
+
 	// 检查是否支持 断点续传
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
 	if r.Header.Get("Accept-Ranges") == "bytes" {
@@ -292,7 +300,9 @@ func (job *DownloadJob) fetchInfo() error {
 	// 获取文件总大小
 	contentLength, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
-		return err
+		job.supportRange = false
+		job.size = 0
+		return nil
 	}
 
 	job.size = contentLength
