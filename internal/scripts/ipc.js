@@ -61,10 +61,12 @@
     }
 
     function withTimeout(promise, ms = 10000) {
+        let timer;
         const timeout = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('等待IPC Handler返回处理结果超时。')), ms);
+            timer = setTimeout(() => reject(new Error('等待IPC Handler返回处理结果超时。')), ms);
         });
-        return Promise.race([promise, timeout])
+
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
     }
 
     // 返回值
@@ -100,9 +102,9 @@
         return withTimeout(new Promise((resolve, reject) => {
             mb.replyWaiting[msg.id] = { resolve, reject }
             toGO(msg)
-        }).finally(() => {
+        })).finally(() => {
             delete mb.replyWaiting[msg.id]
-        }))
+        })
     }
 
     // sent 调用，没有返回值
