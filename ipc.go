@@ -34,7 +34,7 @@ type IPCMessage struct {
 	ReplyId string        `json:"replyId"` // 回复ID
 	Channel string        `json:"channel"` // 通道
 	Args    []interface{} `json:"args"`    // 参数
-	Fail    bool          `json:"fail"`    // 是否错误，当有回复ID时，此字段有效
+	Error   string        `json:"error"`   // 是否错误，当有回复ID时，此字段有效
 	Result  interface{}   `json:"result"`  // 返回值，当有回复ID时，此字段有效
 }
 
@@ -156,16 +156,16 @@ func (ipc *IPC) invokeByJS(view *View, msg *IPCMessage) {
 	// 调用 invoke 获取到结果
 	result, err := ipc.Invoke(msg.Channel, msg.Args...)
 
-	fail := false
+	e := ""
 	if err != nil {
-		fail = true
-		result = err.Error()
+		e = err.Error()
+		result = nil
 	}
 
 	replyMsg := IPCMessage{
 		ID:      utils.RandString(8),
 		ReplyId: msg.ID,
-		Fail:    fail,
+		Error:   e,
 		Result:  result,
 	}
 
@@ -182,13 +182,8 @@ func (ipc *IPC) handleJSReply(msg *IPCMessage) {
 		return
 	}
 
-	if msg.Fail {
-		err, ok := msg.Result.(error)
-		if ok {
-			resultChan <- err
-		} else {
-			resultChan <- errors.New(msg.Result.(string))
-		}
+	if msg.Error != "" {
+		resultChan <- errors.New(msg.Error)
 	} else {
 		resultChan <- msg.Result
 	}

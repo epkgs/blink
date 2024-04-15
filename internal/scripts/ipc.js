@@ -56,8 +56,8 @@
         }
         return randomString;
     }
-    function newMsg({ id = randStr(), replyId = '', channel = '', args = [], result = null, fail = false }) {
-        return { id, replyId, channel, args, result, fail }
+    function newMsg({ id = randStr(), replyId = '', channel = '', args = [], result = null, error = '' }) {
+        return { id, replyId, channel, args, result, error }
     }
 
     function withTimeout(promise, ms = 10000) {
@@ -74,8 +74,8 @@
         if (!msg.replyId) return;
         const p = mb.replyWaiting[msg.replyId]
         if (!p) return;
-        if (msg.fail) {
-            p.reject(new Error(msg.result))
+        if (msg.error) {
+            p.reject(new Error(msg.error))
             return;
         }
         p.resolve(msg.result)
@@ -92,7 +92,7 @@
             const res = await handler(...args); // 支持 promise
             toGO(newMsg({ replyId: id, channel, args, result: res })) // 返回结果
         } catch (err) {
-            toGO(newMsg({ replyId: id, channel, args, result: err, fail: true })) // 返回结果
+            toGO(newMsg({ replyId: id, channel, args, error: err })) // 返回结果
         }
     }
 
