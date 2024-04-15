@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>go-to-js</title>
+    <script type="application/javascript">
+        function clearMessage() {
+            document.getElementById("message").innerHTML = "";
+        }
+
+        function writeMessage(data) {
+            let message = document.getElementById("message");
+            message.innerHTML = message.innerHTML + data + "<br>"
+        }
+
+        let gId = 0
+
+        //调用Go中监听的事件
+        function goOnEventDemo() {
+            clearMessage()
+            //参数传递,从下标0开始表示第1个参数
+            ipc.invoke('go-on-event-demo', '传递的数据 ' + gId)
+        }
+
+        //带有返回值的事件
+        async function goOnEventDemoReturn() {
+            clearMessage()
+            //参数传递,从下标0开始表示第1个参数
+            var strData = ""
+            for (var i = 0; i < 100000; i++) {
+                strData += "[" + i + "]";
+            }
+            const data = await ipc.invoke('go-on-event-demo-return', '传递的数据:' + strData, 99999, false, 9999.999, "这是第五个参数");
+
+            writeMessage("data-length: " + data.length)
+            writeMessage("data: " + data)
+        }
+
+        // 在Go中监听一个事件, 不带返回值
+        // 使用形参接收参数
+        // 在JS中入参类型必须相同
+        function goOnEventDemoArgument() {
+            ipc.invoke('go-on-event-demo-argument', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
+        }
+
+        // 在Go中监听一个事件, 带返回值
+        // 使用形参接收参数
+        // 在JS中入参类型必须相同
+        async function goOnEventDemoArgumentReturn() {
+            const result = await ipc.invoke('go-on-event-demo-argument-return', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
+            writeMessage("result: " + result)
+        }
+
+
+        let intval = null;
+
+        function autoEmit() {
+            if (intval == null) {
+                // cef ipc 不要 for {} 无间隔的调用
+                intval = setInterval(function () {
+                    goOnEventDemo()
+                    goOnEventDemoArgument()
+                    goOnEventDemoArgumentReturn()
+                    gId++
+                })
+            } else {
+                clearInterval(intval)
+                intval = null
+            }
+        }
+    </script>
+</head>
+
+<body style="margin: 0px;padding: 0px;">
+    Go中监听事件，JS中调用<br>
+    <button onclick="goOnEventDemo()">go-on-event-demo</button>
+    <button onclick="goOnEventDemoReturn()">go-on-event-demo-return</button>
+    <button onclick="goOnEventDemoArgument()">go-on-event-demo-argument</button>
+    <button onclick="goOnEventDemoArgumentReturn()">go-on-event-demo-argument-return</button>
+    <br>
+    <button onclick="autoEmit()">autoEmit</button>
+    <div id="message"></div>
+</body>
+
+</html>

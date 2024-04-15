@@ -3,8 +3,9 @@ go 1.22.0
 use (
 	.
 	./samples/baidu
-	./samples/call-js
 	./samples/flameless
+	./samples/ipc-go-to-js
 	./samples/ipc-js-to-go
+	./samples/run-js-func
 	./samples/transparent
 )

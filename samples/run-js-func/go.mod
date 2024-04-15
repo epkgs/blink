@@ -1,4 +1,4 @@
-module call-js
+module run-js-func
 
 go 1.22.0
 

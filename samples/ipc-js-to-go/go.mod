@@ -1,4 +1,4 @@
-module main
+module ipc-js-to-go
 
 go 1.22.0
 
