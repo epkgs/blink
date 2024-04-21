@@ -21,10 +21,14 @@ const (
 
 type IPCHandler func(args ...any) any
 
+type resultCallback func(result any)
+
+type ipcHandler func(cb resultCallback, args ...any) error
+
 type IPC struct {
 	mb *Blink
 
-	handlers map[string]IPCHandler
+	handlers map[string]ipcHandler
 
 	resultWaiting map[string]chan any
 }
@@ -42,7 +46,7 @@ func newIPC(mb *Blink) *IPC {
 	ipc := &IPC{
 		mb: mb,
 
-		handlers:      make(map[string]IPCHandler),
+		handlers:      make(map[string]ipcHandler),
 		resultWaiting: make(map[string]chan any),
 	}
 
@@ -66,9 +70,13 @@ func (ipc *IPC) Invoke(channel string, args ...any) (any, error) {
 		return nil, errors.New(msg)
 	}
 
-	result := handler(args...)
+	var result any
 
-	if err, ok := result.(error); ok {
+	err := handler(func(res any) {
+		result = res
+	}, args...)
+
+	if err != nil {
 		return nil, err
 	}
 
@@ -83,8 +91,8 @@ func (ipc *IPC) Sent(channel string, args ...any) error {
 		return errors.New(msg)
 	}
 
-	result := handler(args...)
-	if err, ok := result.(error); ok {
+	err := handler(nil, args...)
+	if err != nil {
 		return err
 	}
 
@@ -93,7 +101,27 @@ func (ipc *IPC) Sent(channel string, args ...any) error {
 
 // GO 注册 Handler
 func (ipc *IPC) Handle(channel string, handler IPCHandler) {
-	ipc.handlers[channel] = handler
+	ipc.handlers[channel] = func(cb resultCallback, args ...any) (err error) {
+
+		defer func() {
+			if r := recover(); r != nil {
+				switch e := r.(type) {
+				case error:
+					err = e
+				default:
+					err = fmt.Errorf("从 panic 中恢复 %s 的 handler， err: %v", channel, r)
+				}
+			}
+		}()
+
+		result := handler(args...)
+
+		if cb != nil {
+			cb(result)
+		}
+
+		return nil
+	}
 }
 
 func (ipc *IPC) HasChannel(channel string) (exist bool) {
@@ -149,7 +177,7 @@ func (ipc *IPC) invokeByJS(view *View, msg *IPCMessage) {
 
 	// 如果 ID 为空，则无须回复返回值
 	if msg.ID == "" {
-		ipc.Invoke(msg.Channel, msg.Args...)
+		ipc.Sent(msg.Channel, msg.Args...)
 		return
 	}
 
@@ -199,16 +227,34 @@ func (ipc *IPC) registerJSHandler() {
 		view := ipc.mb.GetViewByJsExecState(es)
 
 		// 将 JS handler 转为 GO handler
-		ipc.handlers[channel] = func(args ...any) any {
+		ipc.handlers[channel] = func(cb resultCallback, args ...any) (err error) {
+
+			defer func() {
+				if r := recover(); r != nil {
+					switch e := r.(type) {
+					case error:
+						err = e
+					default:
+						err = fmt.Errorf("从 panic 中恢复 %s 的 handler， err: %v", channel, r)
+					}
+				}
+			}()
+
 			id, resultChan := ipc.handleJSChannel(view, channel, args...)
 			defer close(resultChan)             // 关闭 result
 			defer delete(ipc.resultWaiting, id) // 接收到消息就从 map 中删除
 
+			if cb == nil {
+				return
+			}
+
 			select {
 			case result := <-resultChan:
-				return result
+				cb(result)
+				return
 			case <-time.After(10 * time.Second): // 10秒等待超时
-				return errors.New("等待 IPC JS Handler 处理结果超时")
+				err = errors.New("等待 IPC JS Handler 处理结果超时")
+				return
 			}
 		}
 	})

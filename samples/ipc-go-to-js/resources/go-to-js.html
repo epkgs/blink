@@ -20,7 +20,7 @@
         function goOnEventDemo() {
             clearMessage()
             //参数传递,从下标0开始表示第1个参数
-            ipc.invoke('go-on-event-demo', '传递的数据 ' + gId)
+            ipc.sent('go-on-event-demo', '传递的数据 ' + gId)
         }
 
         //带有返回值的事件
@@ -41,7 +41,7 @@
         // 使用形参接收参数
         // 在JS中入参类型必须相同
         function goOnEventDemoArgument() {
-            ipc.invoke('go-on-event-demo-argument', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
+            ipc.sent('go-on-event-demo-argument', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
         }
 
         // 在Go中监听一个事件, 带返回值
