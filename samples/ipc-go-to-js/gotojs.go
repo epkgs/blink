@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"os"
 	"strings"
 
 	blink "github.com/epkgs/mini-blink"
@@ -30,6 +31,10 @@ func main() {
 	view.LoadURL("http://local/go-to-js.html")
 
 	view.ShowWindow()
+
+	view.OnDestroy(func() {
+		os.Exit(0)
+	})
 
 	//在go中监听一个事件, 不带返回值
 	//使用上下文获取参数

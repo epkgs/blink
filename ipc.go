@@ -210,6 +210,8 @@ func (ipc *IPC) handleJSReply(msg *IPCMessage) {
 		return
 	}
 
+	defer delete(ipc.resultWaiting, msg.ReplyId) // 接收到消息就从 map 中删除
+
 	if msg.Error != "" {
 		resultChan <- errors.New(msg.Error)
 	} else {
@@ -240,13 +242,31 @@ func (ipc *IPC) registerJSHandler() {
 				}
 			}()
 
-			id, resultChan := ipc.handleJSChannel(view, channel, args...)
-			defer close(resultChan)             // 关闭 result
-			defer delete(ipc.resultWaiting, id) // 接收到消息就从 map 中删除
-
 			if cb == nil {
+				msg := IPCMessage{
+					ID:      "", // ID 为空则不需要回复
+					Channel: channel,
+					Args:    args,
+				}
+				sentMsgToView(view, msg)
 				return
 			}
+
+			id := utils.RandString(8) // 生成key
+
+			msg := IPCMessage{
+				ID:      id,
+				Channel: channel,
+				Args:    args,
+			}
+
+			resultChan := make(chan any, 1) // result 管道
+
+			ipc.resultWaiting[id] = resultChan // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
+
+			sentMsgToView(view, msg)
+
+			defer close(resultChan) // 关闭 result
 
 			select {
 			case result := <-resultChan:
@@ -260,32 +280,27 @@ func (ipc *IPC) registerJSHandler() {
 	})
 }
 
-func (ipc *IPC) handleJSChannel(view *View, channel string, args ...any) (id string, result chan any) {
-	id = utils.RandString(8) // 生成key
-
-	msg := IPCMessage{
-		ID:      id, // 关键是 ID 设置为空
-		Channel: channel,
-		Args:    args,
-	}
-
-	result = make(chan any, 1) // result 管道
-
-	ipc.resultWaiting[id] = result // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
-
-	sentMsgToView(view, msg)
-
-	return id, result
-}
-
 func (ipc *IPC) RunJSFunc(view *View, funcName string, args ...any) chan any {
 
 	newArgs := make([]any, 0, len(args)+1)
 	newArgs = append(newArgs, funcName)
 	newArgs = append(newArgs, args...)
 
-	_, result := ipc.handleJSChannel(view, "runFunc", newArgs...)
-	return result
+	id := utils.RandString(8) // 生成key
+
+	msg := IPCMessage{
+		ID:      id,
+		Channel: "runFunc",
+		Args:    newArgs,
+	}
+
+	resultChan := make(chan any, 1) // result 管道
+
+	ipc.resultWaiting[id] = resultChan // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
+
+	sentMsgToView(view, msg)
+
+	return resultChan
 }
 
 func sentMsgToView(view *View, msg IPCMessage) {
