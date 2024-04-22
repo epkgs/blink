@@ -340,6 +340,7 @@ func (ipc *IPC) registerJSHandler() {
 				cb(result)
 				return
 			case <-time.After(10 * time.Second): // 10秒等待超时
+				defer delete(ipc.resultWaiting, id) // 删除 result
 				err = errors.New("等待 IPC JS Handler 处理结果超时")
 				return
 			}
