@@ -28,7 +28,7 @@
             clearMessage()
             //参数传递,从下标0开始表示第1个参数
             var strData = ""
-            for (var i = 0; i < 100000; i++) {
+            for (var i = 0; i < 10; i++) {
                 strData += "[" + i + "]";
             }
             const data = await ipc.invoke('go-on-event-demo-return', '传递的数据:' + strData, 99999, false, 9999.999, "这是第五个参数");

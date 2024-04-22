@@ -446,31 +446,26 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 
 	if !v.mb.IPC.HasChannel("addEventListener") {
 
-		v.mb.IPC.Handle("addEventListener", func(args ...any) any {
-			hwndStr := args[0].(string)
+		v.mb.IPC.Handle("addEventListener", func(hwndStr, selector, eventType string) {
 			hwnd, err := strconv.Atoi(hwndStr)
 			if err != nil {
 				log.Error("hwnd 转换失败：%s", err.Error())
-				return nil
+				return
 			}
-
-			selector := args[1].(string)
-			eventType := args[2].(string)
 
 			view := v.mb.GetViewByHandle(WkeHandle(hwnd))
 			if view == nil {
-				return nil
+				return
 			}
 
 			key := selector + " " + eventType
 
 			callback, exist := view.eventCallbacks[key]
 			if !exist {
-				return nil
+				return
 			}
 
 			callback()
-			return nil
 		})
 
 	}

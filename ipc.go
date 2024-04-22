@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
+	"github.com/epkgs/mini-blink/internal/cast"
 	"github.com/epkgs/mini-blink/internal/log"
 	"github.com/epkgs/mini-blink/internal/utils"
 )
@@ -19,7 +21,7 @@ const (
 	JS_REGISTER_HANDLER = "__register_handler"
 )
 
-type IPCHandler func(args ...any) any
+type Callback interface{}
 
 type resultCallback func(result any)
 
@@ -100,8 +102,17 @@ func (ipc *IPC) Sent(channel string, args ...any) error {
 }
 
 // GO 注册 Handler
-func (ipc *IPC) Handle(channel string, handler IPCHandler) {
-	ipc.handlers[channel] = func(cb resultCallback, args ...any) (err error) {
+func (ipc *IPC) Handle(channel string, handler Callback) error {
+
+	// 使用反射获取处理函数的类型
+	handlerVal := reflect.ValueOf(handler)
+	if handlerVal.Kind() != reflect.Func {
+		return errors.New("handler must be a function")
+	}
+
+	handlerType := handlerVal.Type()
+
+	ipc.handlers[channel] = func(cb resultCallback, inputs ...any) (err error) {
 
 		defer func() {
 			if r := recover(); r != nil {
@@ -114,14 +125,70 @@ func (ipc *IPC) Handle(channel string, handler IPCHandler) {
 			}
 		}()
 
-		result := handler(args...)
+		inputSize := len(inputs)
 
-		if cb != nil {
-			cb(result)
+		// 构造参数列表
+		pCount := handlerType.NumIn()
+		isVariadic := handlerType.IsVariadic()
+		if isVariadic {
+			pCount = pCount - 1
+		}
+		inVals := make([]reflect.Value, pCount)
+		for i := 0; i < pCount; i++ {
+
+			param := handlerType.In(i)
+
+			var inputVal reflect.Value
+
+			if i < inputSize {
+				inputVal, err = cast.Param(param, inputs[i])
+				if err != nil {
+					return
+				}
+			} else {
+				inputVal = reflect.Zero(param)
+			}
+
+			inVals[i] = inputVal
 		}
 
-		return nil
+		if isVariadic {
+			// 处理可变参数
+			inputs = inputs[pCount:]
+			inputSize := len(inputs)
+			elem := handlerType.In(handlerType.NumIn() - 1).Elem()
+			for i := 0; i < inputSize; i++ {
+				var inputVal reflect.Value
+				inputVal, err = cast.Param(elem, inputs[i])
+				if err != nil {
+					log.Error(err.Error())
+					return
+				}
+				inVals = append(inVals, inputVal)
+			}
+		}
+
+		// 调用处理函数
+		out := handlerVal.Call(inVals)
+
+		if cb == nil {
+			return
+		}
+
+		// 处理返回值
+		if len(out) == 0 {
+			// 没有返回值
+			cb(nil)
+		} else if len(out) == 1 {
+			// 只有一个返回值
+			cb(out[0].Interface())
+		} else {
+			// 多个返回值
+			return fmt.Errorf("multiple return values are not supported")
+		}
+		return
 	}
+	return nil
 }
 
 func (ipc *IPC) HasChannel(channel string) (exist bool) {
@@ -151,7 +218,7 @@ func (ipc *IPC) registerJS2GO() {
 		arg := ipc.mb.js.Arg(es, 0)
 		txt := ipc.mb.js.ToString(es, arg)
 
-		log.Info("GO -> JS: %s", txt)
+		log.Info("JS -> GO: %s", txt)
 
 		var msg IPCMessage
 		if err := json.Unmarshal(([]byte)(txt), &msg); err != nil {
