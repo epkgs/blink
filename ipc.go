@@ -215,29 +215,31 @@ func (ipc *IPC) registerBootScript() {
 // JS -> GO 的消息分派、处理
 func (ipc *IPC) registerJS2GO() {
 	ipc.mb.js.bindFunction(JS_JS2GO, 1, func(es JsExecState) {
-		go func() {
-			arg := ipc.mb.js.Arg(es, 0)
-			txt := ipc.mb.js.ToString(es, arg)
+		arg := ipc.mb.js.Arg(es, 0)
+		txt := ipc.mb.js.ToString(es, arg)
 
-			log.Info("JS -> GO: %s", txt)
+		log.Info("JS -> GO: %s", txt)
 
-			var msg IPCMessage
-			if err := json.Unmarshal(([]byte)(txt), &msg); err != nil {
-				log.Error("JS -> GO, JSON 解析出错(%s): %s", err.Error(), txt)
-				return
-			}
+		var msg IPCMessage
+		if err := json.Unmarshal(([]byte)(txt), &msg); err != nil {
+			log.Error("JS -> GO, JSON 解析出错(%s): %s", err.Error(), txt)
+			return
+		}
 
-			if msg.ReplyId != "" {
+		if msg.ReplyId != "" {
+			ipc.mb.AddJob(func() {
 				ipc.handleJSReply(&msg)
-				return
-			}
+			})
+			return
+		}
 
-			if msg.Channel != "" {
-				view := ipc.mb.GetViewByJsExecState(es)
+		if msg.Channel != "" {
+			view := ipc.mb.GetViewByJsExecState(es)
+			ipc.mb.AddJob(func() {
 				ipc.invokeByJS(view, &msg)
-				return
-			}
-		}()
+			})
+			return
+		}
 	})
 }
 
