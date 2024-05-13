@@ -337,17 +337,22 @@ func (ipc *IPC) registerJSHandler() {
 
 			sentMsgToView(view, msg)
 
-			defer close(resultChan) // 关闭 result
+			// 异步等待 JS 返回值，异步处理 JS 消息时，此处阻塞，导致无法执行任务队列，导致阻塞死循环
+			go func() {
+				defer close(resultChan) // 关闭 result
 
-			select {
-			case result := <-resultChan:
-				cb(result)
-				return
-			case <-time.After(10 * time.Second): // 10秒等待超时
-				defer delete(ipc.resultWaiting, id) // 删除 result
-				err = errors.New("等待 IPC JS Handler 处理结果超时")
-				return
-			}
+				select {
+				case result := <-resultChan:
+					cb(result)
+					return
+				case <-time.After(10 * time.Second): // 10秒等待超时
+					defer delete(ipc.resultWaiting, id) // 删除 result
+					err = errors.New("等待 IPC JS Handler 处理结果超时")
+					return
+				}
+			}()
+
+			return
 		}
 	})
 }
