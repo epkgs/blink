@@ -333,9 +333,7 @@ func (v *View) registerOnDocumentReady() {
 	var cb WkeDocumentReady2Callback = func(view WkeHandle, param uintptr, frame WkeWebFrameHandle) (voidRes uintptr) {
 
 		for _, callback := range v.onDocumentReadyCallbacks {
-			func(v *View) {
-				callback(frame)
-			}(v)
+			callback(frame)
 		}
 
 		return 0
