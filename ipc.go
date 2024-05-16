@@ -25,6 +25,7 @@ type Callback interface{}
 
 type resultCallback func(result any)
 
+// resultCallback 用于区分无须返回值的情况
 type ipcHandler func(cb resultCallback, args ...any) error
 
 type IPC struct {
@@ -72,17 +73,18 @@ func (ipc *IPC) Invoke(channel string, args ...any) (any, error) {
 		return nil, errors.New(msg)
 	}
 
-	var result any
+	result := make(chan any, 1)
 
+	// 将 callback 转 chan
 	err := handler(func(res any) {
-		result = res
+		result <- res
 	}, args...)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	return <-result, nil
 }
 
 func (ipc *IPC) Sent(channel string, args ...any) error {
@@ -178,10 +180,10 @@ func (ipc *IPC) Handle(channel string, handler Callback) error {
 		// 处理返回值
 		if len(out) == 0 {
 			// 没有返回值
-			cb(nil)
+			go cb(nil)
 		} else if len(out) == 1 {
 			// 只有一个返回值
-			cb(out[0].Interface())
+			go cb(out[0].Interface())
 		} else {
 			// 多个返回值
 			return fmt.Errorf("multiple return values are not supported")
@@ -343,7 +345,7 @@ func (ipc *IPC) registerJSHandler() {
 
 				select {
 				case result := <-resultChan:
-					cb(result)
+					go cb(result)
 					return
 				case <-time.After(10 * time.Second): // 10秒等待超时
 					defer delete(ipc.resultWaiting, id) // 删除 result
