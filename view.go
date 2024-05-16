@@ -356,7 +356,7 @@ func (v *View) GetRect() *WkeRect {
 	return (*WkeRect)(unsafe.Pointer(ptr))
 }
 
-// 仅作用于 主frame
+// 仅作用于 主frame，会自动判断是否 document ready
 func (v *View) RunJS(script string) {
 
 	if v.IsDocumentReady() {
@@ -372,10 +372,30 @@ func (v *View) RunJS(script string) {
 		v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
 
 		if stop != nil {
-			stop()
+			stop() // 执行完毕就停止，不重复执行
 		}
 	})
+}
 
+// 可指定 frame，会自动判断是否 document ready
+func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string, isInClosure bool) {
+
+	if v.IsDocumentReady() {
+		v.mb.CallFunc("wkeRunJsByFrame", uintptr(frame), StringToPtr(script), BoolToPtr(isInClosure))
+		return
+	}
+
+	var stop func()
+	stop = v.OnDocumentReady(func(readyFrame WkeWebFrameHandle) {
+		if readyFrame != frame {
+			return
+		}
+		v.mb.CallFunc("wkeRunJsByFrame", uintptr(frame), StringToPtr(script), BoolToPtr(isInClosure))
+
+		if stop != nil {
+			stop() // 执行完毕就停止，不重复执行
+		}
+	})
 }
 
 func (v *View) RunJsFunc(funcName string, args ...any) (result chan any) {
