@@ -79,6 +79,10 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 		window.setTitle(title)
 	})
 
+	if window.windowType == WKE_WINDOW_TYPE_TRANSPARENT {
+		window.EnableBorderResize()
+	}
+
 	return window
 }
 
@@ -448,4 +452,14 @@ func (w *Window) SetTitle(title string) {
 }
 func (w *Window) setTitle(title string) {
 	w.mb.CallFunc("wkeSetWindowTitle", uintptr(w.view.Hwnd), StringToPtr(title))
+}
+
+// 开启边缘拖动大小功能
+func (w *Window) EnableBorderResize() {
+	w.enableBorderResize = true
+}
+
+// 关闭边缘拖动大小功能
+func (w *Window) DisableBorderResize() {
+	w.enableBorderResize = false
 }

@@ -25,8 +25,6 @@ func main() {
 
 	view.Window.MoveToCenter()
 
-	view.EnableBorderResize()
-
 	view.LoadURL("http://local/flameless.html")
 
 	view.ShowWindow()

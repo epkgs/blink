@@ -347,10 +347,6 @@ func (v *View) IsMainFrame(frameId WkeWebFrameHandle) bool {
 	return p != 0
 }
 
-func (v *View) EnableBorderResize() {
-	v.Window.enableBorderResize = true
-}
-
 func (v *View) GetRect() *WkeRect {
 	ptr, _, _ := v.mb.CallFunc("wkeGetCaretRect2", uintptr(v.Hwnd))
 	return (*WkeRect)(unsafe.Pointer(ptr))
