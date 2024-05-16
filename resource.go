@@ -2,6 +2,7 @@ package blink
 
 import (
 	"embed"
+	"errors"
 	fs "io/fs"
 	"net/http"
 	netUrl "net/url"
@@ -23,7 +24,7 @@ func NewResourceLoader() *ResourceLoader {
 //   - fs.SubFS
 //   - http.FileSystem
 //   - string of directory (The resource will not embed, you should copy the files to the target build directory)
-func (res *ResourceLoader) Bind(domain string, fileSystem any) {
+func (res *ResourceLoader) Bind(domain string, fileSystem any) (err error) {
 	uri, err := netUrl.Parse(domain)
 	if err != nil {
 		return
@@ -45,10 +46,10 @@ func (res *ResourceLoader) Bind(domain string, fileSystem any) {
 	case fs.FS:
 		(*res)[dm] = http.FS(v)
 	default:
-		// TODO: 移除 panic，应该使用返回 error
-		panic("fs type error, only accept: http.FileSystem, embed.FS, fs.FS, fs.SubFS or string of directory")
+		err = errors.New("fs type error, only accept: http.FileSystem, embed.FS, fs.FS, fs.SubFS or string of directory")
 	}
 
+	return
 }
 
 func (res *ResourceLoader) Unbind(domain string) {
