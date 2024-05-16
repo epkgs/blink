@@ -220,7 +220,7 @@ func (ipc *IPC) registerJS2GO() {
 		arg := ipc.mb.js.Arg(es, 0)
 		txt := ipc.mb.js.ToString(es, arg)
 
-		log.Info("JS -> GO: %s", txt)
+		// log.Info("JS -> GO: %s", txt)
 
 		var msg IPCMessage
 		if err := json.Unmarshal(([]byte)(txt), &msg); err != nil {
@@ -388,7 +388,7 @@ func sentMsgToView(view *View, msg IPCMessage) {
 
 	script := fmt.Sprintf(`window.top['%s'](%q)`, JS_GO2JS, msgTxt)
 
-	log.Info("GO -> JS: %s", msgTxt)
+	// log.Info("GO -> JS: %s", msgTxt)
 
 	view.RunJS(script)
 }
