@@ -576,7 +576,7 @@ func (v *View) registerOnDownload() {
 	var cb WkeDownloadCallback = func(view WkeHandle, param uintptr, url uintptr) (voidRes uintptr) {
 		link := PtrToString(url)
 		for _, callback := range v.onDownloadCallbacks {
-			go callback(link)
+			callback(link)
 		}
 		return
 	}

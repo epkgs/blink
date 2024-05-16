@@ -37,19 +37,21 @@ func main() {
 	})
 
 	view.OnDocumentReady(func(frame blink.WkeWebFrameHandle) {
-		//调用func_1
-		view.RunJsFunc("func_1", "张三", 18)
+		// 避免阻塞主线程
+		go func() {
+			//调用func_1
+			view.RunJsFunc("func_1", "张三", 18)
 
-		//获取func_2返回的基础数据类型
-		resp2 := view.RunJsFunc("func_2")
-		result2 := (<-resp2).(string) // wait for result
-		fmt.Printf("func_2 result is %s\n", result2)
+			//获取func_2返回的基础数据类型
+			resp2 := view.RunJsFunc("func_2")
+			result2 := (<-resp2).(string) // wait for result
+			fmt.Printf("func_2 result is %s\n", result2)
 
-		//获取func_3返回的非基本数据类型
-		resp3 := view.RunJsFunc("func_3")
-		result3 := (<-resp3).(map[string]any) // wait for result
-		fmt.Printf("func_3 result is %v\n", result3)
-
+			//获取func_3返回的非基本数据类型
+			resp3 := view.RunJsFunc("func_3")
+			result3 := (<-resp3).(map[string]any) // wait for result
+			fmt.Printf("func_3 result is %v\n", result3)
+		}()
 	})
 
 	view.OnDestroy(func() {

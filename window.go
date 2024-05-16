@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/lxn/win"
 	"github.com/epkgs/mini-blink/internal/log"
+	"github.com/lxn/win"
 )
 
 type WM_SIZING uint16
@@ -222,34 +222,49 @@ func (w *Window) udpateCursor() bool {
 }
 
 func (w *Window) Show() {
-	win.ShowWindow(win.HWND(w.Hwnd), win.SW_SHOW)
+	w.mb.AddJob(func() {
+		win.ShowWindow(win.HWND(w.Hwnd), win.SW_SHOW)
+	})
+	// w.view.mb.CallFunc("wkeShowWindow", uintptr(w.view.Hwnd), 1)
 }
 
 func (w *Window) Hide() {
-	win.ShowWindow(win.HWND(w.Hwnd), win.SW_HIDE)
+	w.mb.AddJob(func() {
+		win.ShowWindow(win.HWND(w.Hwnd), win.SW_HIDE)
+	})
+	// w.view.mb.CallFunc("wkeShowWindow", uintptr(w.view.Hwnd), 0)
 }
 
 func (w *Window) Close() {
-	win.PostMessage(win.HWND(w.Hwnd), win.WM_CLOSE, 0, 0)
+	w.mb.AddJob(func() {
+		win.PostMessage(win.HWND(w.Hwnd), win.WM_CLOSE, 0, 0)
+	})
 }
 
 func (w *Window) Destroy() {
-	win.DestroyWindow(win.HWND(w.Hwnd))
+	w.mb.AddJob(func() {
+		win.DestroyWindow(win.HWND(w.Hwnd))
+	})
 	// w.view.DestroyWindow()
 }
 
 func (w *Window) MinimizeToTray() {
-
-	win.ShowWindow(win.HWND(w.Hwnd), win.SW_HIDE)
+	w.mb.AddJob(func() {
+		win.ShowWindow(win.HWND(w.Hwnd), win.SW_HIDE)
+	})
 }
 
 func (w *Window) Minimize() {
-	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MINIMIZE), 0)
+	w.mb.AddJob(func() {
+		win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MINIMIZE), 0)
+	})
 }
 
 func (w *Window) Maximize() {
-	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MAXIMIZE), 0)
-	w.isMaximized = true
+	w.mb.AddJob(func() {
+		w.isMaximized = true
+		win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MAXIMIZE), 0)
+	})
 }
 
 func (w *Window) IsMaximized() bool {
@@ -259,13 +274,17 @@ func (w *Window) IsMaximized() bool {
 }
 
 func (w *Window) Restore() {
-	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_RESTORE), 0)
-	w.isMaximized = false
+	w.mb.AddJob(func() {
+		w.isMaximized = false
+		win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_RESTORE), 0)
+	})
 }
 
 func (w *Window) EnableDragging() {
-	win.ReleaseCapture() // 松开鼠标控制
-	go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MOVE|win.HTCAPTION), 0)
+	w.mb.AddJob(func() {
+		win.ReleaseCapture() // 松开鼠标控制
+		go win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_MOVE|win.HTCAPTION), 0)
+	})
 }
 
 func (w *Window) CloseAsHideTray() {
@@ -301,28 +320,32 @@ func (w *Window) EnableTray(setups ...func(*win.NOTIFYICONDATA)) {
 }
 
 func (w *Window) RemoveTray() {
-
-	win.Shell_NotifyIcon(win.NIM_DELETE, &w.nid)
+	w.mb.AddJob(func() {
+		win.Shell_NotifyIcon(win.NIM_DELETE, &w.nid)
+	})
 
 }
 
 // TODO: 抽离代码，使其更通用，可以在外部添加修改菜单
 func (w *Window) showSimpleTrayMenu() {
 
-	// 创建托盘菜单
-	hMenu := win.CreatePopupMenu()
-	if hMenu == 0 {
-		return
-	}
-	defer win.DestroyMenu(hMenu)
+	w.mb.AddJob(func() {
+		// 创建托盘菜单
+		hMenu := win.CreatePopupMenu()
+		if hMenu == 0 {
+			return
+		}
+		defer win.DestroyMenu(hMenu)
 
-	appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_RESTORE, StringToWCharPtr("显示窗口"))
-	appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_EXIT, StringToWCharPtr("退出"))
+		appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_RESTORE, StringToWCharPtr("显示窗口"))
+		appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_EXIT, StringToWCharPtr("退出"))
 
-	var pt win.POINT
-	win.GetCursorPos(&pt)
-	win.SetMenuDefaultItem(hMenu, ID_TRAYMENU_RESTORE, false)
-	win.TrackPopupMenu(hMenu, win.TPM_LEFTALIGN|win.TPM_RIGHTBUTTON, pt.X, pt.Y, 0, win.HWND(w.Hwnd), nil)
+		var pt win.POINT
+		win.GetCursorPos(&pt)
+		win.SetMenuDefaultItem(hMenu, ID_TRAYMENU_RESTORE, false)
+		win.TrackPopupMenu(hMenu, win.TPM_LEFTALIGN|win.TPM_RIGHTBUTTON, pt.X, pt.Y, 0, win.HWND(w.Hwnd), nil)
+	})
+
 }
 
 func (w *Window) SetIcon(handle win.HANDLE) error {
@@ -332,8 +355,11 @@ func (w *Window) SetIcon(handle win.HANDLE) error {
 
 	w.iconHandle = handle
 
-	win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, win.IMAGE_ICON, uintptr(handle))
-	// win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, win.IMAGE_BITMAP, uintptr(handle))
+	w.mb.AddJob(func() {
+
+		win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, win.IMAGE_ICON, uintptr(handle))
+		// win.SendMessage(win.HWND(w.Hwnd), win.WM_SETICON, win.IMAGE_BITMAP, uintptr(handle))
+	})
 
 	return nil
 }

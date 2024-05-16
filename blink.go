@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/epkgs/mini-blink/internal/log"
+	"github.com/epkgs/mini-blink/queue"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 )
@@ -15,6 +16,18 @@ var locker sync.RWMutex
 type BlinkJob struct {
 	job  func()
 	done chan bool
+}
+
+type CallFuncJob struct {
+	funcName string
+	args     []uintptr
+	result   chan CallFuncResult
+}
+
+type CallFuncResult struct {
+	R1  uintptr
+	R2  uintptr
+	Err error
 }
 
 type Blink struct {
@@ -34,8 +47,12 @@ type Blink struct {
 
 	bootScripts []string
 
-	quit chan bool
-	jobs chan BlinkJob
+	threadID uint32 // 调用 mb api 的线程 id
+
+	quit      chan bool
+	jobs      chan BlinkJob
+	calls     *queue.Queue[CallFuncJob]
+	jobQueues []func()
 }
 
 func NewApp(setups ...func(*Config)) *Blink {
@@ -60,9 +77,14 @@ func NewApp(setups ...func(*Config)) *Blink {
 		views:   make(map[WkeHandle]*View),
 		windows: make(map[WkeHandle]*Window),
 
-		quit: make(chan bool),
-		jobs: make(chan BlinkJob, 20),
+		quit:      make(chan bool),
+		jobs:      make(chan BlinkJob, 20),
+		calls:     queue.NewQueue[CallFuncJob](999),
+		jobQueues: []func(){},
 	}
+
+	// 启动任务循环
+	blink.loopJobQueues()
 
 	if !blink.IsInitialize() {
 		blink.Initialize()
@@ -130,43 +152,25 @@ func (mb *Blink) GetWindowByHandle(windowHwnd WkeHandle) *Window {
 	return window
 }
 
-func (mb *Blink) AddJob(job func()) chan bool {
-	done := make(chan bool, 1)
-	mb.jobs <- BlinkJob{
-		job,
-		done,
-	}
-
-	return done
-}
-
 func (mb *Blink) KeepRunning() {
 
-	runtime.LockOSThread()
+	done := make(chan bool, 1)
 
 	msg := &win.MSG{}
 
-	for {
-		select {
-		case <-mb.quit:
+	mb.AddQueue(func() {
+
+		if win.GetMessage(msg, 0, 0, 0) <= 0 {
 			return
-
-		case bj := <-mb.jobs:
-			log.Info("received job")
-			bj.job()
-			close(bj.done)
-
-		default:
-
-			if win.GetMessage(msg, 0, 0, 0) <= 0 {
-				return
-			}
-
-			win.TranslateMessage(msg)
-
-			win.DispatchMessage(msg)
 		}
-	}
+
+		win.TranslateMessage(msg)
+
+		win.DispatchMessage(msg)
+
+	})
+
+	<-done
 
 }
 
@@ -179,9 +183,120 @@ func (mb *Blink) findProc(name string) *windows.Proc {
 	return proc
 }
 
-// ! 注意：args 的 GC。例如传入值是另一个 callback 的入参，那么需要确保此传入值直到 callback 调用时仍未被 GC 回收
-func (mb *Blink) CallFunc(name string, args ...uintptr) (r1 uintptr, r2 uintptr, err error) {
-	runtime.LockOSThread() // ! 由于 miniblink 的线程限制，需要锁定线程
+func (mb *Blink) CallFunc(funcName string, args ...uintptr) (r1 uintptr, r2 uintptr, err error) {
+
+	threadID := windows.GetCurrentThreadId()
+
+	// 如果和调用 MB 的线程不一致，则塞入 chan 队列，等待执行
+	if mb.threadID != threadID {
+
+		rst := <-mb.CallFuncAsync(funcName, args...)
+
+		return rst.R1, rst.R2, rst.Err
+	}
+
+	// 一致，则直接执行
+	return mb.doCallFunc(funcName, args...)
+}
+
+func (mb *Blink) CallFuncFirst(funcName string, args ...uintptr) (r1 uintptr, r2 uintptr, err error) {
+
+	threadID := windows.GetCurrentThreadId()
+
+	// 如果和调用 MB 的线程不一致，则塞入 chan 队列，等待执行
+	if mb.threadID != threadID {
+
+		rst := <-mb.CallFuncAsyncFirst(funcName, args...)
+
+		return rst.R1, rst.R2, rst.Err
+	}
+
+	// 一致，则直接执行
+	return mb.doCallFunc(funcName, args...)
+}
+
+func (mb *Blink) CallFuncAsync(funcName string, args ...uintptr) chan CallFuncResult {
+
+	job := CallFuncJob{
+		funcName: funcName,
+		args:     args,
+		result:   make(chan CallFuncResult, 1),
+	}
+	mb.calls.AddLast(job)
+
+	return job.result
+}
+
+func (mb *Blink) CallFuncAsyncFirst(funcName string, args ...uintptr) chan CallFuncResult {
+
+	job := CallFuncJob{
+		funcName: funcName,
+		args:     args,
+		result:   make(chan CallFuncResult, 1),
+	}
+	mb.calls.AddFirst(job)
+
+	return job.result
+}
+
+// 将单个任务塞入队列，仅执行一次
+func (mb *Blink) AddJob(job func()) chan bool {
+	done := make(chan bool, 1)
+	mb.jobs <- BlinkJob{
+		job,
+		done,
+	}
+
+	return done
+}
+
+// 增加任务到循环队列，每次循环都会执行
+func (mb *Blink) AddQueue(job ...func()) *Blink {
+	mb.jobQueues = append(mb.jobQueues, job...)
+	return mb
+}
+
+func (mb *Blink) loopJobQueues() {
+	go func() {
+
+		runtime.LockOSThread() // ! 由于 miniblink 的线程限制，需要锁定线程
+
+		mb.threadID = windows.GetCurrentThreadId()
+
+		for {
+			select {
+			// 退出信号
+			case <-mb.quit:
+				return
+
+				// 任务
+			case bj := <-mb.jobs:
+				bj.job()
+				close(bj.done)
+
+				// 调用 mb api 接口的异步任务
+			case ch := <-mb.calls.Chan():
+				job := ch.First()
+				r1, r2, err := mb.doCallFunc(job.funcName, job.args...)
+				job.result <- CallFuncResult{
+					R1:  r1,
+					R2:  r2,
+					Err: err,
+				}
+
+			default:
+
+				// 执行剩余队列
+				for _, queue := range mb.jobQueues {
+					queue()
+				}
+
+			}
+		}
+	}()
+}
+
+func (mb *Blink) doCallFunc(name string, args ...uintptr) (r1 uintptr, r2 uintptr, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 
