@@ -1,6 +1,6 @@
 module ipc-go-to-js
 
-go 1.22.0
+
 
 require github.com/epkgs/mini-blink v0.0.0-20240410034757-2f4d8dbb63e4
 

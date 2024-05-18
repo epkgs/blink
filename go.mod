@@ -1,6 +1,6 @@
 module github.com/epkgs/mini-blink
 
-go 1.22.0
+go 1.20
 
 require (
 	github.com/jlaffaye/ftp v0.2.0
