@@ -1,11 +1,11 @@
 # MINI-BLINK
 
-## 介绍
-基于免费版的 [miniblink](https://miniblink.net/) 的 GO 封装
+基于免费版的 [miniblink](https://miniblink.net/) 的 GO 封装，内嵌 miniblink 的 DLL，并根据构建环境自动选择 x86/x64 DLL
 
-1. 不使用 CGO
-2. 面向对象
-3. JS 交互以及事件绑定
+## 特点
+1. 纯 GO 实现，无须写 C 代码
+2. 封装了大部分 miniblink 的 API，面向对象，方便使用。
+3. JS 交互（IPC通讯、事件绑定、调用JS函数），具体使用方式，请参考示例
 4. 本地目录、BIN资源的加载
 5. 内嵌 miniblink 的 DLL，并根据构建环境自动选择 x86/x64 DLL
 
@@ -16,7 +16,7 @@ func (mb *Blink) CallFunc(name string, args ...uintptr) (r1 uintptr, r2 uintptr,
 ```
 
 ## 开发环境
-- GO 1.22
+- GO 1.20
 
 
 ## 打包
