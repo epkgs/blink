@@ -396,6 +396,10 @@ func (mb *Blink) NetSetData(job WkeNetJob, buf []byte) {
 	mb.CallFunc("wkeNetSetData", uintptr(job), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 }
 
+func (mb *Blink) NetHookRequest(job WkeNetJob) {
+	mb.CallFunc("wkeNetHookRequest", uintptr(job))
+}
+
 func (mb *Blink) GetViewByJsExecState(es JsExecState) *View {
 	handle := mb.js.GetWebView(es)
 	return mb.GetViewByHandle(handle)
