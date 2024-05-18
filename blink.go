@@ -49,10 +49,10 @@ type Blink struct {
 
 	threadID uint32 // 调用 mb api 的线程 id
 
-	quit      chan bool
-	jobs      chan BlinkJob
-	calls     *queue.Queue[CallFuncJob]
-	jobQueues []func()
+	quit     chan bool
+	jobs     chan BlinkJob
+	calls    *queue.Queue[CallFuncJob]
+	jobLoops []func()
 }
 
 func NewApp(setups ...func(*Config)) *Blink {
@@ -77,14 +77,14 @@ func NewApp(setups ...func(*Config)) *Blink {
 		views:   make(map[WkeHandle]*View),
 		windows: make(map[WkeHandle]*Window),
 
-		quit:      make(chan bool),
-		jobs:      make(chan BlinkJob, 20),
-		calls:     queue.NewQueue[CallFuncJob](999),
-		jobQueues: []func(){},
+		quit:     make(chan bool),
+		jobs:     make(chan BlinkJob, 20),
+		calls:    queue.NewQueue[CallFuncJob](999),
+		jobLoops: []func(){},
 	}
 
 	// 启动任务循环
-	blink.loopJobQueues()
+	blink.loopJobLoops()
 
 	if !blink.IsInitialize() {
 		blink.Initialize()
@@ -158,7 +158,7 @@ func (mb *Blink) KeepRunning() {
 
 	msg := &win.MSG{}
 
-	mb.AddQueue(func() {
+	mb.AddLoop(func() {
 
 		if win.GetMessage(msg, 0, 0, 0) <= 0 {
 			return
@@ -251,12 +251,12 @@ func (mb *Blink) AddJob(job func()) chan bool {
 }
 
 // 增加任务到循环队列，每次循环都会执行
-func (mb *Blink) AddQueue(job ...func()) *Blink {
-	mb.jobQueues = append(mb.jobQueues, job...)
+func (mb *Blink) AddLoop(job ...func()) *Blink {
+	mb.jobLoops = append(mb.jobLoops, job...)
 	return mb
 }
 
-func (mb *Blink) loopJobQueues() {
+func (mb *Blink) loopJobLoops() {
 	go func() {
 
 		runtime.LockOSThread() // ! 由于 miniblink 的线程限制，需要锁定线程
@@ -287,7 +287,7 @@ func (mb *Blink) loopJobQueues() {
 			default:
 
 				// 执行剩余队列
-				for _, queue := range mb.jobQueues {
+				for _, queue := range mb.jobLoops {
 					queue()
 				}
 
