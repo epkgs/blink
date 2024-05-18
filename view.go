@@ -467,8 +467,8 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 				return
 			}
 
-			view := v.mb.GetViewByHandle(WkeHandle(hwnd))
-			if view == nil {
+			view, exist := v.mb.GetViewByHandle(WkeHandle(hwnd))
+			if !exist {
 				return
 			}
 

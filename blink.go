@@ -130,26 +130,20 @@ func (mb *Blink) GetFirstView() (view *View) {
 	return
 }
 
-func (mb *Blink) GetViewByHandle(viewHwnd WkeHandle) *View {
+func (mb *Blink) GetViewByHandle(viewHwnd WkeHandle) (view *View, exist bool) {
 	locker.Lock()
 	defer locker.Unlock()
 
-	view, exist := mb.views[viewHwnd]
-	if !exist {
-		return nil
-	}
-	return view
+	view, exist = mb.views[viewHwnd]
+	return
 }
 
-func (mb *Blink) GetWindowByHandle(windowHwnd WkeHandle) *Window {
+func (mb *Blink) GetWindowByHandle(windowHwnd WkeHandle) (window *Window, exist bool) {
 	locker.Lock()
 	defer locker.Unlock()
 
-	window, exist := mb.windows[windowHwnd]
-	if !exist {
-		return nil
-	}
-	return window
+	window, exist = mb.windows[windowHwnd]
+	return
 }
 
 func (mb *Blink) KeepRunning() {
@@ -400,7 +394,7 @@ func (mb *Blink) NetHookRequest(job WkeNetJob) {
 	mb.CallFunc("wkeNetHookRequest", uintptr(job))
 }
 
-func (mb *Blink) GetViewByJsExecState(es JsExecState) *View {
+func (mb *Blink) GetViewByJsExecState(es JsExecState) (view *View, exist bool) {
 	handle := mb.js.GetWebView(es)
 	return mb.GetViewByHandle(handle)
 }

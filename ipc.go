@@ -236,10 +236,12 @@ func (ipc *IPC) registerJS2GO() {
 		}
 
 		if msg.Channel != "" {
-			view := ipc.mb.GetViewByJsExecState(es)
-			ipc.mb.AddJob(func() {
-				ipc.invokeByJS(view, &msg)
-			})
+			if view, exist := ipc.mb.GetViewByJsExecState(es); exist {
+
+				ipc.mb.AddJob(func() {
+					ipc.invokeByJS(view, &msg)
+				})
+			}
 			return
 		}
 	})
@@ -299,7 +301,11 @@ func (ipc *IPC) registerJSHandler() {
 		arg := ipc.mb.js.Arg(es, 0)
 		channel := ipc.mb.js.ToString(es, arg)
 
-		view := ipc.mb.GetViewByJsExecState(es)
+		view, exist := ipc.mb.GetViewByJsExecState(es)
+		if !exist {
+			log.Error("JS 注册 handler, 没有找到 view")
+			return
+		}
 
 		// 将 JS handler 转为 GO handler
 		ipc.handlers[channel] = func(cb resultCallback, args ...any) (err error) {
