@@ -199,11 +199,11 @@ func (ipc *IPC) HasChannel(channel string) (exist bool) {
 }
 
 //go:embed internal/scripts/ipc.js
-var bootjs []byte
+var ipcjs []byte
 
 func (ipc *IPC) registerBootScript() {
 	script := fmt.Sprintf(
-		string(bootjs),
+		string(ipcjs),
 		JS_MB,
 		JS_IPC,
 		JS_JS2GO,
