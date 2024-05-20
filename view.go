@@ -284,13 +284,12 @@ func (v *View) OnLoadUrlBegin(callback OnLoadUrlBeginCallback) (stop func()) {
 func (v *View) registerOnLoadUrlBegin() {
 	var handler = func(view, param, url, job uintptr) (boolPtr uintptr) {
 		for _, callback := range v.onLoadUrlBeginCallbacks {
-			// 如果返回结果为 true，则中断后面的处理，直接返回 true
 			// 返回 true 则中断、阻止后面的网络请求
 			if callback(PtrToString(url), WkeNetJob(job)) {
-				return 1
+				return 1 // 返回 true 的 uintptr
 			}
 		}
-		return 0
+		return 0 // 返回 false 的 uintptr
 	}
 
 	v.mb.CallFunc("wkeOnLoadUrlBegin", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
