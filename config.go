@@ -1,8 +1,11 @@
 package blink
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/epkgs/mini-blink/internal/log"
 )
 
 type Config struct {
@@ -16,7 +19,7 @@ type Config struct {
 	cookieFile string
 }
 
-func NewConfig(setups ...func(*Config)) *Config {
+func NewConfig(setups ...func(*Config)) (*Config, error) {
 
 	tempPath := filepath.Join(os.TempDir(), "mini-blink")
 
@@ -31,12 +34,12 @@ func NewConfig(setups ...func(*Config)) *Config {
 		setup(conf)
 	}
 
+	log.Info("临时文件夹：%s", conf.tempPath)
 	if err := os.MkdirAll(conf.tempPath, 0644); err != nil {
-		// TODO: 移除 panic，应该使用返回 error
-		panic("临时文件夹不存在，且创建不成功，请确认文件夹权限。")
+		return nil, fmt.Errorf("临时文件夹(%s)不存在，且创建不成功，请确认文件夹权限。", conf.tempPath)
 	}
 
-	return conf
+	return conf, nil
 }
 
 func WithConfigTempPath(path string) func(*Config) {

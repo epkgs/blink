@@ -5,6 +5,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/epkgs/mini-blink/internal/dll"
 	"github.com/epkgs/mini-blink/internal/log"
 	"github.com/epkgs/mini-blink/queue"
 	"github.com/lxn/win"
@@ -57,11 +58,16 @@ type Blink struct {
 
 func NewApp(setups ...func(*Config)) *Blink {
 
-	config := NewConfig(setups...)
-
-	dll, err := loadDLL(config)
-
+	config, err := NewConfig(setups...)
 	if err != nil {
+		log.Error("NewConfig ERR: %v", err)
+		MessageBoxError(0, err.Error())
+		panic(err)
+	}
+
+	dll, err := dll.Load(config.GetDllFilePath())
+	if err != nil {
+		log.Error("loadDLL ERR: %v", err)
 		MessageBoxError(0, err.Error())
 		panic(err)
 	}
