@@ -17,3 +17,5 @@ func (fs emptyFS) Open(name string) (fs.File, error) {
 var _fs = &emptyFS{}
 
 var FS = fs.FS(_fs)
+
+const DLL_FILE = "blink.dll"
