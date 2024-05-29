@@ -9,11 +9,19 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func Load(filepath string) (*windows.DLL, error) {
+const DLL_FILE = "blink.dll"
+
+func Load(releasePath string) (*windows.DLL, error) {
 
 	// 尝试直接加载 DLL
-	if loaded, err := windows.LoadDLL(filepath); err == nil {
-		log.Info("直接加载DLL: %s", filepath)
+	if loaded, err := windows.LoadDLL(DLL_FILE); err == nil {
+		log.Info("直接加载DLL: %s", DLL_FILE)
+		return loaded, nil
+	}
+
+	// 尝试直接加载释放后的 DLL
+	if loaded, err := windows.LoadDLL(releasePath); err == nil {
+		log.Info("直接加载DLL: %s", releasePath)
 		return loaded, nil
 	}
 
@@ -22,6 +30,7 @@ func Load(filepath string) (*windows.DLL, error) {
 	if err != nil {
 		return nil, errors.New("无法从默认路径或内嵌资源里找到 blink.dll，err: " + err.Error())
 	}
+	defer file.Close()
 
 	// 读取内嵌资源 DLL 文件内容
 	data, err := io.ReadAll(file)
@@ -30,7 +39,7 @@ func Load(filepath string) (*windows.DLL, error) {
 	}
 
 	// 临时文件夹里不存在，则创建
-	newFile, err := os.Create(filepath)
+	newFile, err := os.Create(releasePath)
 	if err != nil {
 		return nil, errors.New("无法创建dll文件，err: " + err.Error())
 	}
@@ -44,6 +53,6 @@ func Load(filepath string) (*windows.DLL, error) {
 		return nil, errors.New("写入校验失败")
 	}
 
-	log.Info("从内嵌资源里释放并加载 %s", filepath)
-	return windows.MustLoadDLL(filepath), nil
+	log.Info("从内嵌资源里释放并加载 %s", releasePath)
+	return windows.MustLoadDLL(releasePath), nil
 }

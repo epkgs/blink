@@ -10,6 +10,4 @@ import (
 //go:embed x64
 var res embed.FS
 
-const DLL_FILE = "blink.dll"
-
 var FS, _ = fs.Sub(res, "x64")
