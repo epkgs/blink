@@ -1,7 +1,8 @@
 package blink
 
+import "C"
+
 import (
-	"C"
 	"fmt"
 	"io"
 	"strconv"
@@ -72,7 +73,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 	view.Window = newWindow(mb, view, windowType)
 
 	view.SetLocalStorageFullPath(view.mb.Config.GetStoragePath())
-	view.SetCookieJarFullPath(view.mb.Config.GetCookieFilePath())
+	view.SetCookieJarFullPath(view.mb.Config.GetCookieFileABS())
 
 	view.registerFileSystem()
 

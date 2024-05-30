@@ -12,7 +12,7 @@ type Config struct {
 	// 临时文件夹，用于释放 DLL 以及其他临时文件
 	tempPath string
 	// dll文件路径，非绝对路径将在临时文件夹内创建
-	dll string
+	dllFile string
 	// 设置storage本地文件目录
 	storagePath string
 	// 设置cookie文件名
@@ -25,7 +25,7 @@ func NewConfig(setups ...func(*Config)) (*Config, error) {
 
 	conf := &Config{
 		tempPath:    tempPath,
-		dll:         "blink.dll",
+		dllFile:     "blink.dll",
 		storagePath: "LocalStorage",
 		cookieFile:  "cookie.dat",
 	}
@@ -42,37 +42,45 @@ func NewConfig(setups ...func(*Config)) (*Config, error) {
 	return conf, nil
 }
 
-func WithConfigTempPath(path string) func(*Config) {
+func WithTempPath(path string) func(*Config) {
 	return func(conf *Config) {
 		conf.tempPath = path
 	}
 }
 
-func WithConfigDll(dll string) func(*Config) {
+func WithDllFile(dllFile string) func(*Config) {
 	return func(conf *Config) {
-		conf.dll = dll
+		conf.dllFile = dllFile
 	}
 }
 
-func WithConfigStoragePath(path string) func(*Config) {
+func WithStoragePath(path string) func(*Config) {
 	return func(conf *Config) {
 		conf.storagePath = path
 	}
 }
 
-func WithConfigCookieFile(path string) func(*Config) {
+func WithCookieFile(path string) func(*Config) {
 	return func(conf *Config) {
 		conf.cookieFile = path
 	}
 }
 
-func (conf *Config) GetDllFilePath() string {
+func (conf *Config) GetDllFile() string {
+	return conf.dllFile
+}
 
-	if filepath.IsAbs(conf.dll) {
-		return conf.dll
+func (conf *Config) GetTempPath() string {
+	return conf.tempPath
+}
+
+func (conf *Config) GetDllFileABS() string {
+
+	if filepath.IsAbs(conf.dllFile) {
+		return conf.dllFile
 	}
 
-	return filepath.Join(conf.tempPath, conf.dll)
+	return filepath.Join(conf.tempPath, conf.dllFile)
 }
 
 func (conf *Config) GetStoragePath() string {
@@ -84,7 +92,7 @@ func (conf *Config) GetStoragePath() string {
 	return filepath.Join(conf.tempPath, conf.storagePath)
 }
 
-func (conf *Config) GetCookieFilePath() string {
+func (conf *Config) GetCookieFileABS() string {
 
 	if filepath.IsAbs(conf.cookieFile) {
 		return conf.cookieFile

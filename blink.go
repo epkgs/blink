@@ -5,8 +5,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/epkgs/mini-blink/internal/dll"
 	"github.com/epkgs/mini-blink/internal/log"
+	"github.com/epkgs/mini-blink/internal/miniblink"
 	"github.com/epkgs/mini-blink/queue"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
@@ -65,7 +65,7 @@ func NewApp(setups ...func(*Config)) *Blink {
 		panic(err)
 	}
 
-	dll, err := dll.Load(config.GetDllFilePath())
+	dll, err := miniblink.LoadDLL(config.GetDllFile(), config.GetTempPath())
 	if err != nil {
 		log.Error("loadDLL ERR: %v", err)
 		MessageBoxError(0, err.Error())

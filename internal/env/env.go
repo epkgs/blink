@@ -5,14 +5,14 @@ type Env struct {
 	isDebug bool
 }
 
-func (env *Env) IsSYS64() bool {
+func IsSYS64() bool {
 	return env.isSYS64
 }
 
-func (env *Env) IsDebug() bool {
+func IsDebug() bool {
 	return env.isDebug
 }
 
-func (env *Env) IsRelease() bool {
+func IsRelease() bool {
 	return !env.isDebug
 }
