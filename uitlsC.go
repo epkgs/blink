@@ -163,3 +163,20 @@ type KnownCType interface {
 func LOWORD(dwValue uint32) uint16 {
 	return uint16(dwValue & 0xFFFF)
 }
+
+func CopyString(src uintptr, n int) string {
+	return string(CopyBytes(src, n))
+}
+
+func CopyBytes(src uintptr, n int) []byte {
+	if n == 0 {
+		return make([]byte, 0)
+	}
+
+	byts := make([]uint8, n)
+	for i := 0; i < n; i++ {
+		byts[i] = *(*uint8)(unsafe.Pointer(src + uintptr(i)))
+	}
+
+	return byts
+}

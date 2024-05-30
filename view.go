@@ -1,7 +1,5 @@
 package blink
 
-import "C"
-
 import (
 	"fmt"
 	"io"
@@ -311,7 +309,7 @@ func (v *View) registerOnLoadUrlEnd() {
 
 		_url := PtrToString(url)
 		_job := WkeNetJob(job)
-		_buf := C.GoBytes(unsafe.Pointer(buf), C.int(len))
+		_buf := CopyBytes(buf, int(len))
 		for _, callback := range v.onLoadUrlEndCallbacks {
 			callback(_url, _job, _buf)
 		}
