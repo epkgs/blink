@@ -20,3 +20,6 @@ func log(format string, vars ...interface{}) {
 		outputDebugStringW.Call(uintptr(unsafe.Pointer(p)))
 	}
 }
+
+func Debug(format string, vars ...interface{}) {
+}

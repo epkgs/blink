@@ -34,7 +34,7 @@ func NewConfig(setups ...func(*Config)) (*Config, error) {
 		setup(conf)
 	}
 
-	log.Info("临时文件夹：%s", conf.tempPath)
+	log.Debug("临时文件夹：%s", conf.tempPath)
 	if err := os.MkdirAll(conf.tempPath, 0644); err != nil {
 		return nil, fmt.Errorf("临时文件夹(%s)不存在，且创建不成功，请确认文件夹权限。", conf.tempPath)
 	}

@@ -110,13 +110,13 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		case WM_TRAYNOTIFY:
 
 			if lparam == win.WM_LBUTTONDBLCLK {
-				log.Info("Tray icon double clicked")
+				log.Debug("Tray icon double clicked")
 				w.Restore()
 				return true
 			}
 
 			if lparam == win.WM_RBUTTONUP {
-				log.Info("Right click tray icon")
+				log.Debug("Right click tray icon")
 				if w.useSimpleTrayMenu {
 					w.showSimpleTrayMenu()
 					return true
@@ -127,11 +127,11 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			menuID := LOWORD(uint32(wparam))
 			switch menuID {
 			case ID_TRAYMENU_RESTORE:
-				log.Info("Restore menu item clicked")
+				log.Debug("Restore menu item clicked")
 				w.Restore()
 				return true
 			case ID_TRAYMENU_EXIT:
-				log.Info("Exit menu item clicked")
+				log.Debug("Exit menu item clicked")
 				// w.Hide()
 				w.Destroy()
 				return true
@@ -318,7 +318,7 @@ func (w *Window) EnableTray(setups ...func(*win.NOTIFYICONDATA)) {
 	win.Shell_NotifyIcon(win.NIM_ADD, &w.nid)
 
 	w.view.OnDestroy(func() {
-		log.Info("RemoveTray in view OnDestroy event")
+		log.Debug("RemoveTray in view OnDestroy event")
 		w.RemoveTray()
 	})
 }

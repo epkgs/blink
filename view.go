@@ -108,7 +108,7 @@ func (v *View) addToPool() {
 	v.mb.views[v.Hwnd] = v
 	v.mb.windows[v.Window.Hwnd] = v.Window
 
-	log.Info("Add view to BLINK, now SIZE: %d", len(v.mb.views))
+	log.Debug("Add view to BLINK, now SIZE: %d", len(v.mb.views))
 
 	v.OnDestroy(func() {
 
@@ -237,7 +237,7 @@ func (v *View) OnClosing(callback OnClosingCallback) (stop func()) {
 }
 func (v *View) registerOnClosing() {
 	var handler WkeWindowClosingCallback = func(view WkeHandle, param uintptr) (boolRes uintptr) {
-		log.Info("Trigger view.OnClosing")
+		log.Debug("Trigger view.OnClosing")
 		for _, callback := range v.onClosingCallbacks {
 			if ok := callback(); !ok {
 				return BoolToPtr(false)
@@ -261,7 +261,7 @@ func (v *View) OnDestroy(callback OnDestroyCallback) (stop func()) {
 }
 func (v *View) registerOnDestroy() {
 	var handler WkeWindowDestroyCallback = func(view WkeHandle, param uintptr) (voidRes uintptr) {
-		log.Info("Trigger view.OnDestroy")
+		log.Debug("Trigger view.OnDestroy")
 		for _, callback := range v.onDestroyCallbacks {
 			callback()
 		}

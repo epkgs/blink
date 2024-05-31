@@ -1,4 +1,4 @@
-//go:build !release && debug
+//go:build !release && !debug
 
 package log
 
@@ -11,5 +11,4 @@ func log(format string, vars ...interface{}) {
 }
 
 func Debug(format string, vars ...interface{}) {
-	log("[GO-BLINK DEBUG] "+format, vars...)
 }

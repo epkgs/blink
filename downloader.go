@@ -96,11 +96,11 @@ func (job *DownloadJob) downloadFtp(urlParsed *url.URL) error {
 	if target, ok := openSaveFileDialog(job.target); ok {
 		job.target = target
 	} else {
-		job.logInfo("用户取消保存。")
+		job.logDebug("用户取消保存。")
 		return nil
 	}
 
-	job.logInfo("创建任务 %s", job.url)
+	job.logDebug("创建任务 %s", job.url)
 
 	r, err := c.Retr(urlParsed.Path)
 	if err != nil {
@@ -134,35 +134,35 @@ func (job *DownloadJob) downloadHttp() error {
 
 	job.Downloader.lastJobId++
 
-	job.logInfo("创建任务 %s", job.url)
+	job.logDebug("创建任务 %s", job.url)
 
 	if target, ok := openSaveFileDialog(job.target); ok {
 		job.target = target
 	} else {
-		job.logInfo("用户取消保存。")
+		job.logDebug("用户取消保存。")
 		return nil
 	}
 
 	if job.supportRange {
-		job.logInfo("支持断点续传，线程：%d", job.Downloader.threads)
+		job.logDebug("支持断点续传，线程：%d", job.Downloader.threads)
 		if err := job.multiThreadDownload(); err != nil {
 			job.logErr(err.Error())
 			return err
 		}
 	} else {
-		job.logInfo("不支持断点续传，将以单进程模式下载。")
+		job.logDebug("不支持断点续传，将以单进程模式下载。")
 		if err := job.singleThreadDownload(); err != nil {
 			job.logErr(err.Error())
 			return err
 		}
 	}
 
-	job.logInfo("下载完成：%s", job.target)
+	job.logDebug("下载完成：%s", job.target)
 	return nil
 }
 
-func (job *DownloadJob) logInfo(tpl string, vars ...interface{}) {
-	log.Info(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
+func (job *DownloadJob) logDebug(tpl string, vars ...interface{}) {
+	log.Debug(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
 
 func (job *DownloadJob) logErr(tpl string, vars ...interface{}) {
@@ -223,7 +223,7 @@ func (job *DownloadJob) multiThreadDownload() error {
 				errs = append(errs, err)
 			}
 
-			job.logInfo("切片 %d 下载完成", i+1)
+			job.logDebug("切片 %d 下载完成", i+1)
 			wg.Done()
 
 		}()

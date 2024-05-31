@@ -15,7 +15,7 @@ func LoadDLL(dllFile, tempPath string) (*windows.DLL, error) {
 
 	// 尝试直接从默认目录里加载 DLL
 	if loaded, err := windows.LoadDLL(dllFile); err == nil {
-		log.Info("直接加载DLL: %s", dllFile)
+		log.Debug("直接加载DLL: %s", dllFile)
 		return loaded, nil
 	}
 
@@ -24,7 +24,7 @@ func LoadDLL(dllFile, tempPath string) (*windows.DLL, error) {
 
 	// 尝试直接加载释放后的 DLL
 	if loaded, err := windows.LoadDLL(releaseFile); err == nil {
-		log.Info("直接加载DLL: %s", releaseFile)
+		log.Debug("直接加载DLL: %s", releaseFile)
 		return loaded, nil
 	}
 
@@ -40,7 +40,7 @@ func LoadDLL(dllFile, tempPath string) (*windows.DLL, error) {
 		return nil, err
 	}
 
-	log.Info("从内嵌资源里释放并加载 %s", releaseFile)
+	log.Debug("从内嵌资源里释放并加载 %s", releaseFile)
 	return windows.MustLoadDLL(releaseFile), nil
 }
 
