@@ -393,7 +393,7 @@ func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string, isInClosure 
 	})
 }
 
-func (v *View) RunJsFunc(funcName string, args ...any) (result chan any) {
+func (v *View) RunJsFunc(funcName string, args ...interface{}) (result chan interface{}) {
 
 	return v.mb.IPC.RunJSFunc(v, funcName, args...)
 }

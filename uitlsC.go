@@ -100,7 +100,7 @@ func PtrWCharToString(p uintptr) string {
 }
 
 // callback = func(args ...uintptr) uintptr
-func CallbackToPtr(callback any) uintptr {
+func CallbackToPtr(callback interface{}) uintptr {
 	return syscall.NewCallbackCDecl(callback)
 }
 
@@ -117,7 +117,7 @@ func PtrToBool(p uintptr) bool {
 	return p != 0
 }
 
-func AssertType[T any](ptr uintptr) *T {
+func AssertType[T interface{}](ptr uintptr) *T {
 	return (*T)(unsafe.Pointer(ptr))
 }
 

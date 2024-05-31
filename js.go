@@ -202,7 +202,7 @@ func (js *JS) Call(es JsExecState, fn, thisValue JsValue, args []JsValue) JsValu
 	return JsValue(r)
 }
 
-func (js *JS) ToJsValue(es JsExecState, value any) JsValue {
+func (js *JS) ToJsValue(es JsExecState, value interface{}) JsValue {
 	if value == nil {
 		return js.Undefined()
 	}
@@ -278,7 +278,7 @@ func (js *JS) ToJsValue(es JsExecState, value any) JsValue {
 	panic("不支持的go类型：" + rv.Kind().String() + "(" + rv.Type().String() + ")")
 }
 
-func (js *JS) ToGoValue(es JsExecState, value JsValue) any {
+func (js *JS) ToGoValue(es JsExecState, value JsValue) interface{} {
 	switch js.TypeOf(value) {
 	case JsType_NULL, JsType_UNDEFINED:
 		return nil
@@ -290,14 +290,14 @@ func (js *JS) ToGoValue(es JsExecState, value JsValue) any {
 		return js.ToTempString(es, value)
 	case JsType_ARRAY:
 		length := js.GetLength(es, value)
-		ps := make([]any, length)
+		ps := make([]interface{}, length)
 		for i := 0; i < length; i++ {
 			v := js.GetAt(es, value, uint32(i))
 			ps[i] = js.ToGoValue(es, v)
 		}
 		return ps
 	case JsType_OBJECT:
-		ps := make(map[string]any)
+		ps := make(map[string]interface{})
 		keys := js.GetKeys(es, value)
 		for _, k := range keys {
 			v := js.Get(es, value, k)

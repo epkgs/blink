@@ -2,5 +2,5 @@
 
 package log
 
-func log(format string, vars ...any) {
+func log(format string, vars ...interface{}) {
 }

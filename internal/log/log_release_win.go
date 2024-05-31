@@ -11,7 +11,7 @@ import (
 var kernel32 = syscall.NewLazyDLL("kernel32")
 var outputDebugStringW = kernel32.NewProc("OutputDebugStringW")
 
-func log(format string, vars ...any) {
+func log(format string, vars ...interface{}) {
 
 	s := fmt.Sprintf(format, vars...)
 

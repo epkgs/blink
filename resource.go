@@ -24,7 +24,7 @@ func NewResourceLoader() *ResourceLoader {
 //   - fs.SubFS
 //   - http.FileSystem
 //   - string of directory (The resource will not embed, you should copy the files to the target build directory)
-func (res *ResourceLoader) Bind(domain string, fileSystem any) (err error) {
+func (res *ResourceLoader) Bind(domain string, fileSystem interface{}) (err error) {
 	uri, err := netUrl.Parse(domain)
 	if err != nil {
 		return

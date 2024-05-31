@@ -4,18 +4,18 @@ import (
 	"sync"
 )
 
-type IQueue[T any] interface {
+type IQueue[T interface{}] interface {
 	First() T
 	Last() T
 }
 
-type Queue[T any] struct {
+type Queue[T interface{}] struct {
 	ch   chan IQueue[T]
 	list []T
 	mu   sync.Mutex
 }
 
-func NewQueue[T any](length ...int) *Queue[T] {
+func NewQueue[T interface{}](length ...int) *Queue[T] {
 	count := 100
 
 	if len(length) > 0 {

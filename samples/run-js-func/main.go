@@ -49,7 +49,7 @@ func main() {
 
 			//获取func_3返回的非基本数据类型
 			resp3 := view.RunJsFunc("func_3")
-			result3 := (<-resp3).(map[string]any) // wait for result
+			result3 := (<-resp3).(map[string]interface{}) // wait for result
 			fmt.Printf("func_3 result is %v\n", result3)
 		}()
 	})

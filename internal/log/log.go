@@ -1,13 +1,13 @@
 package log
 
-func Info(format string, vars ...any) {
+func Info(format string, vars ...interface{}) {
 	log("[GO-BLINK INFO] "+format, vars...)
 }
 
-func Warning(format string, vars ...any) {
+func Warning(format string, vars ...interface{}) {
 	log("[GO-BLINK WARN] "+format, vars...)
 }
 
-func Error(format string, vars ...any) {
+func Error(format string, vars ...interface{}) {
 	log("[GO-BLINK ERROR] "+format, vars...)
 }

@@ -1,12 +1,12 @@
 package ipc
 
-import "github.com/epkgs/mini-blink"
+import blink "github.com/epkgs/mini-blink"
 
-func Sent(mb *blink.Blink, channel string, args ...any) error {
+func Sent(mb *blink.Blink, channel string, args ...interface{}) error {
 	return mb.IPC.Sent(channel, args...)
 }
 
-func Invoke[R any](mb *blink.Blink, channel string, args ...any) (R, error) {
+func Invoke[R interface{}](mb *blink.Blink, channel string, args ...interface{}) (R, error) {
 	res, err := mb.IPC.Invoke(channel, args...)
 	return res.(R), err
 }

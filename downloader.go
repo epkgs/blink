@@ -161,11 +161,11 @@ func (job *DownloadJob) downloadHttp() error {
 	return nil
 }
 
-func (job *DownloadJob) logInfo(tpl string, vars ...any) {
+func (job *DownloadJob) logInfo(tpl string, vars ...interface{}) {
 	log.Info(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
 
-func (job *DownloadJob) logErr(tpl string, vars ...any) {
+func (job *DownloadJob) logErr(tpl string, vars ...interface{}) {
 	log.Error(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
 

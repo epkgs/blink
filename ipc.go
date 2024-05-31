@@ -23,17 +23,17 @@ const (
 
 type Callback interface{}
 
-type resultCallback func(result any)
+type resultCallback func(result interface{})
 
 // resultCallback 用于区分无须返回值的情况
-type ipcHandler func(cb resultCallback, args ...any) error
+type ipcHandler func(cb resultCallback, args ...interface{}) error
 
 type IPC struct {
 	mb *Blink
 
 	handlers map[string]ipcHandler
 
-	resultWaiting map[string]chan any
+	resultWaiting map[string]chan interface{}
 }
 
 type IPCMessage struct {
@@ -50,7 +50,7 @@ func newIPC(mb *Blink) *IPC {
 		mb: mb,
 
 		handlers:      make(map[string]ipcHandler),
-		resultWaiting: make(map[string]chan any),
+		resultWaiting: make(map[string]chan interface{}),
 	}
 
 	ipc.registerBootScript()
@@ -65,7 +65,7 @@ func newIPC(mb *Blink) *IPC {
 //	一、GO 调用 GO handler，直接调用并返回
 //
 //	二、GO 调用 JS handler, 和 GO 调用 GO 流程一样，唯一区别是在 `invokeJS` 里调用 `ipc.Invoke` 执行的 `handler` 是转化后的 `JS handler`
-func (ipc *IPC) Invoke(channel string, args ...any) (any, error) {
+func (ipc *IPC) Invoke(channel string, args ...interface{}) (interface{}, error) {
 	handler, exist := ipc.handlers[channel]
 	if !exist {
 		msg := fmt.Sprintf("ipc channel %s not exist", channel)
@@ -73,10 +73,10 @@ func (ipc *IPC) Invoke(channel string, args ...any) (any, error) {
 		return nil, errors.New(msg)
 	}
 
-	result := make(chan any, 1)
+	result := make(chan interface{}, 1)
 
 	// 将 callback 转 chan
-	err := handler(func(res any) {
+	err := handler(func(res interface{}) {
 		result <- res
 	}, args...)
 
@@ -87,7 +87,7 @@ func (ipc *IPC) Invoke(channel string, args ...any) (any, error) {
 	return <-result, nil
 }
 
-func (ipc *IPC) Sent(channel string, args ...any) error {
+func (ipc *IPC) Sent(channel string, args ...interface{}) error {
 	handler, exist := ipc.handlers[channel]
 	if !exist {
 		msg := fmt.Sprintf("ipc channel %s not exist", channel)
@@ -114,7 +114,7 @@ func (ipc *IPC) Handle(channel string, handler Callback) error {
 
 	handlerType := handlerVal.Type()
 
-	ipc.handlers[channel] = func(cb resultCallback, inputs ...any) (err error) {
+	ipc.handlers[channel] = func(cb resultCallback, inputs ...interface{}) (err error) {
 
 		defer func() {
 			if r := recover(); r != nil {
@@ -308,7 +308,7 @@ func (ipc *IPC) registerJSHandler() {
 		}
 
 		// 将 JS handler 转为 GO handler
-		ipc.handlers[channel] = func(cb resultCallback, args ...any) (err error) {
+		ipc.handlers[channel] = func(cb resultCallback, args ...interface{}) (err error) {
 
 			defer func() {
 				if r := recover(); r != nil {
@@ -339,7 +339,7 @@ func (ipc *IPC) registerJSHandler() {
 				Args:    args,
 			}
 
-			resultChan := make(chan any, 1) // result 管道
+			resultChan := make(chan interface{}, 1) // result 管道
 
 			ipc.resultWaiting[id] = resultChan // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
 
@@ -365,9 +365,9 @@ func (ipc *IPC) registerJSHandler() {
 	})
 }
 
-func (ipc *IPC) RunJSFunc(view *View, funcName string, args ...any) chan any {
+func (ipc *IPC) RunJSFunc(view *View, funcName string, args ...interface{}) chan interface{} {
 
-	newArgs := make([]any, 0, len(args)+1)
+	newArgs := make([]interface{}, 0, len(args)+1)
 	newArgs = append(newArgs, funcName)
 	newArgs = append(newArgs, args...)
 
@@ -379,7 +379,7 @@ func (ipc *IPC) RunJSFunc(view *View, funcName string, args ...any) chan any {
 		Args:    newArgs,
 	}
 
-	resultChan := make(chan any, 1) // result 管道
+	resultChan := make(chan interface{}, 1) // result 管道
 
 	ipc.resultWaiting[id] = resultChan // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
 
