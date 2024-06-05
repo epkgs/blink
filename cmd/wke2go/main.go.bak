@@ -1,0 +1,138 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+
+	_ "embed"
+
+	"github.com/epkgs/mini-blink/cmd/wke2go/parser"
+	"github.com/spf13/cobra"
+	"github.com/thales-e-security/header2go/translate/astparse"
+)
+
+// rootCmd represents the base command when called without any subcommands
+var rootCmd = &cobra.Command{
+	Use:   "API",
+	Short: "Home Moments API",
+	Run: func(cmd *cobra.Command, args []string) {
+		// do stuff here
+	},
+}
+
+var file string
+var out string
+
+func init() {
+	// Define a CLI flag for the config file
+	rootCmd.PersistentFlags().StringVarP(&file, "file", "f", "wke.h", "wke header file path")
+
+	rootCmd.PersistentFlags().StringVarP(&out, "output", "o", "wke.gen.go", "output go file path")
+
+	rootCmd.Execute()
+}
+
+func main() {
+
+	functions, recordDeclarations, typeDeclarations, err := astparse.ReadAst(file)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("functions: %v\n", functions)
+	fmt.Printf("recordDeclarations: %v\n", recordDeclarations)
+	fmt.Printf("typeDeclarations: %v\n", typeDeclarations)
+
+	// byts, err := os.ReadFile(file)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// txt := string(byts)
+
+	// parser.Prettify(&txt)
+
+	// parser.ParseEnums(&txt)
+	// // fmt.Println(cenums)
+
+	// parser.ParseStructs(&txt)
+	// // fmt.Println(cstructs)
+
+	// parser.ParseFuncs(&txt)
+
+	// file, err := os.Create(out)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// defer file.Close()
+
+	// if err := os.WriteFile(out, []byte(txt), 0644); err != nil {
+	// 	panic(err)
+	// }
+
+	// tfuncs := parseTplFuncs(cfuncs)
+
+	// // 准备要传递给模板的数据
+	// data := TplData{
+	// 	Funcs: tfuncs,
+	// }
+
+	// // 加载模板文件
+	// tmpl, err := template.New("wkeFuncs").Parse(string(funcTpl))
+	// if err != nil {
+	// 	fmt.Println("Error parsing template:", err)
+	// }
+	// // 执行模板渲染，将结果写入到响应中
+	// err = tmpl.Execute(os.Stdout, data)
+	// if err != nil {
+	// 	fmt.Println("Error executing template:", err)
+	// }
+
+}
+
+//go:embed template/wke.go.tpl
+var funcTpl []byte
+
+type TplFunc struct {
+	HasComment bool
+	Comment    string
+	Name       string
+	Args       string
+	Result     string
+}
+
+type TplData struct {
+	Funcs []TplFunc
+}
+
+func parseTplFuncs(cfuncs []parser.CFunc) []TplFunc {
+
+	funcs := []TplFunc{}
+	for _, cf := range cfuncs {
+		args := []string{}
+		for _, arg := range cf.Args {
+			args = append(args, arg.Name+" "+arg.Type)
+		}
+		argsStr := strings.Join(args, ", ")
+		var result string
+		if cf.Result == "void" {
+			result = ""
+		} else {
+			result = " " + cf.Result
+		}
+
+		var commentStr string
+		if len(cf.Comments) > 0 {
+			commentStr = "// " + strings.Join(cf.Comments, "\n// \n// ")
+		}
+		funcs = append(funcs, TplFunc{
+			HasComment: len(cf.Comments) > 0,
+			Comment:    commentStr,
+			Name:       cf.Name,
+			Args:       argsStr,
+			Result:     result,
+		})
+	}
+
+	return funcs
+}

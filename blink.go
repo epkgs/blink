@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/epkgs/mini-blink/internal/log"
-	"github.com/epkgs/mini-blink/internal/miniblink"
+	"github.com/epkgs/mini-blink/miniblink"
 	"github.com/epkgs/mini-blink/queue"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
