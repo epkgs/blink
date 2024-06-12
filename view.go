@@ -614,17 +614,21 @@ func (v *View) GetMainWebFrame() (WkeWebFrameHandle, error) {
 type WithWkePrintSettings func(setting *WkePrintSettings)
 
 // 保存主 WebFrame 的内容到 PDF
-func (v *View) SaveToPDF(path string, withSetting ...WithWkePrintSettings) error {
+//
+// 当 setting 的 IsPrintToMultiPage 为 TRUE 时，返回的 finalFilePath 的数组为多个文件路径，否则仅一个文件路径
+func (v *View) SaveToPDF(path string, withSetting ...WithWkePrintSettings) (finalFilePath []string, err error) {
 	frameId, err := v.GetMainWebFrame()
 	if err != nil {
-		return err
+		return
 	}
 
 	return v.SaveWebFrameToPDF(frameId, path, withSetting...)
 }
 
 // 保存指定 WebFrame 的内容到 PDF
-func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSetting ...WithWkePrintSettings) error {
+//
+// 当 setting 的 IsPrintToMultiPage 为 TRUE 时，返回的 finalFilePath 的数组为多个文件路径，否则仅一个文件路径
+func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSetting ...WithWkePrintSettings) (finalFilePath []string, err error) {
 
 	// 假设A4纸张，每边1厘米的边距，DPI为600
 	setting := WkePrintSettings{
@@ -648,7 +652,7 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSet
 
 	r1, _, err := v.mb.CallFunc("wkeUtilPrintToPdf", uintptr(v.Hwnd), uintptr(frameId), uintptr(unsafe.Pointer(&setting)))
 	if err != nil {
-		return err
+		return
 	}
 	// 释放内存
 	defer v.mb.CallFuncAsync("wkeUtilRelasePrintPdfDatas", r1)
@@ -656,7 +660,8 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSet
 	pd := (*wkePdfDatas)(unsafe.Pointer(r1))
 
 	if pd.count == 0 {
-		return errors.New("生成 PDF 失败")
+		err = errors.New("生成 PDF 失败")
+		return
 	}
 
 	sizes := SlicesFromPtr[uintptr](pd.sizes, pd.count)
@@ -670,8 +675,19 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSet
 
 		chunk := SlicesFromPtr[byte](dataPtr, int(size))
 		// chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
-		return writeFile(path, chunk)
+
+		final := getUnusedPath(path)
+
+		err = os.WriteFile(final, chunk, 0644)
+		if err != nil {
+			return
+		}
+
+		finalFilePath = []string{final}
+		return
 	}
+
+	finalFilePath = make([]string, pd.count)
 
 	// 遍历slice里的二进制数据
 	for i := 0; i < pd.count; i++ {
@@ -681,30 +697,20 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSet
 		chunk := SlicesFromPtr[byte](dataPtr, int(size))
 		// chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
 
+		final := getUnusedPath(getFilePathWithIndex(path, i+1))
+		finalFilePath[i] = final
+
 		// 将数据写入文件
-		if err := writeFile(getFilePathWithIndex(path, i+1), chunk); err != nil {
-			return err
+		err = os.WriteFile(final, chunk, 0644)
+		if err != nil {
+			return
 		}
 	}
 
-	return nil
+	return
 }
 
-func writeFile(path string, data []byte) error {
-
-	// 使用 os.Create 创建文件，如有内容则会截断
-
-	file, err := os.Create(getUnusedPath(path))
-	if err != nil {
-		return err
-	}
-	defer file.Close() // 确保在函数返回前关闭文件
-
-	_, err = file.Write(data)
-
-	return err
-}
-
+// 使用索引格式化文件名
 func getFilePathWithIndex(originalPath string, index int) string {
 	base := filepath.Base(originalPath)
 	dir := filepath.Dir(originalPath)
@@ -714,7 +720,7 @@ func getFilePathWithIndex(originalPath string, index int) string {
 	return filepath.Join(dir, fmt.Sprintf("%s-%d%s", baseWithoutExt, index, ext))
 }
 
-// getUnusedPath 检查文件是否存在，并返回一个唯一的文件路径
+// 检查文件是否存在，并返回一个未使用的文件路径
 func getUnusedPath(originalPath string) string {
 
 	// 检查文件是否存在
