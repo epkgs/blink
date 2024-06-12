@@ -4,6 +4,7 @@ use (
 	./samples/flameless
 	./samples/ipc-go-to-js
 	./samples/ipc-js-to-go
+	./samples/pdf
 	./samples/run-js-func
 	./samples/transparent
 )

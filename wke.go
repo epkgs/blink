@@ -182,3 +182,29 @@ const (
 	// 嵌入在父窗口里的子窗口。此时parent需要被设置
 	WKE_WINDOW_TYPE_CONTROL
 )
+
+type BOOL int32
+
+const TRUE BOOL = 1
+const FALSE BOOL = 0
+
+type WkePrintSettings struct {
+	structSize               int32 // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
+	Dpi                      int32 // DPI 默认600
+	Width                    int32 // 纸张宽度，单位 px。（600 DPI 时，转换为像素 A4 的宽度为 4961 px）
+	Height                   int32 // 纸张高度，单位 px。（600 DPI 时，转换为像素 A4 的宽度为 4961 px）
+	MarginTop                int32 // 上边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	MarginBottom             int32 // 下边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	MarginLeft               int32 // 左边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	MarginRight              int32 // 右边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	IsPrintPageHeadAndFooter BOOL  // 是否打印页眉页脚
+	IsPrintBackgroud         BOOL  // 是否打印背景
+	IsLandscape              BOOL  // 是否横向打印
+	IsPrintToMultiPage       BOOL  // 是否打印到多页（分开保存为多个文档）
+}
+
+type wkePdfDatas struct {
+	count int
+	sizes uintptr
+	datas uintptr // 二进制数据
+}

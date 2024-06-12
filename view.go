@@ -1,8 +1,11 @@
 package blink
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -597,4 +600,145 @@ func (v *View) registerOnDownload() {
 	}
 
 	v.mb.CallFunc("wkeOnDownload", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+}
+
+func (v *View) GetMainWebFrame() (WkeWebFrameHandle, error) {
+	r1, _, err := v.mb.CallFunc("wkeWebFrameGetMainFrame", uintptr(v.Hwnd))
+	if err != nil {
+		return 0, err
+	}
+
+	return WkeWebFrameHandle(r1), nil
+}
+
+type WithWkePrintSettings func(setting *WkePrintSettings)
+
+func (v *View) SaveToPDF(path string, withSetting ...WithWkePrintSettings) error {
+	frameId, err := v.GetMainWebFrame()
+	if err != nil {
+		return err
+	}
+
+	return v.SaveWebFrameToPDF(frameId, path, withSetting...)
+}
+
+func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSetting ...WithWkePrintSettings) error {
+
+	// 假设A4纸张，每边1厘米的边距，DPI为600
+	setting := WkePrintSettings{
+		structSize:               48, // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
+		Dpi:                      600,
+		Width:                    4960, // A4纸张宽度转换为像素（600 DPI）
+		Height:                   7016, // A4纸张高度转换为像素（600 DPI）
+		MarginTop:                236,  // 1厘米边距转换为像素（600 DPI）
+		MarginBottom:             236,
+		MarginLeft:               236,
+		MarginRight:              236,
+		IsPrintPageHeadAndFooter: TRUE,  // 是否打印页眉页脚
+		IsPrintBackgroud:         TRUE,  // 是否打印背景
+		IsLandscape:              FALSE, // 是否横向打印
+		IsPrintToMultiPage:       FALSE, // 是否打印到多页
+	}
+
+	for _, withSet := range withSetting {
+		withSet(&setting)
+	}
+
+	r1, _, err := v.mb.CallFunc("wkeUtilPrintToPdf", uintptr(v.Hwnd), uintptr(frameId), uintptr(unsafe.Pointer(&setting)))
+	if err != nil {
+		return err
+	}
+	// 释放内存
+	defer v.mb.CallFuncAsync("wkeUtilRelasePrintPdfDatas", r1)
+
+	pd := (*wkePdfDatas)(unsafe.Pointer(r1))
+
+	if pd.count == 0 {
+		return errors.New("生成 PDF 失败")
+	}
+
+	sizes := SlicesFromPtr[uintptr](pd.sizes, pd.count)
+	datasPtrs := SlicesFromPtr[uintptr](pd.datas, pd.count)
+	// sizes := (*(*[1 << 31]uintptr)(unsafe.Pointer(pd.sizes)))[:pd.count:pd.count]
+	// datasPtrs := (*(*[1 << 31]uintptr)(unsafe.Pointer(pd.datas)))[:pd.count:pd.count]
+
+	if pd.count == 1 {
+		dataPtr := datasPtrs[0]
+		size := sizes[0]
+
+		chunk := SlicesFromPtr[byte](dataPtr, int(size))
+		// chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
+		return writeFile(path, chunk)
+	}
+
+	// 遍历slice里的二进制数据
+	for i := 0; i < pd.count; i++ {
+		dataPtr := datasPtrs[i]
+		size := sizes[i]
+
+		chunk := SlicesFromPtr[byte](dataPtr, int(size))
+		// chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
+
+		// 将数据写入文件
+		if err := writeFile(getFilePathWithIndex(path, i+1), chunk); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func writeFile(path string, data []byte) error {
+
+	// 使用 os.Create 创建文件，如有内容则会截断
+
+	file, err := os.Create(getUnusedPath(path))
+	if err != nil {
+		return err
+	}
+	defer file.Close() // 确保在函数返回前关闭文件
+
+	_, err = file.Write(data)
+
+	return err
+}
+
+func getFilePathWithIndex(originalPath string, index int) string {
+	base := filepath.Base(originalPath)
+	dir := filepath.Dir(originalPath)
+	ext := filepath.Ext(base)
+	baseWithoutExt := base[:len(base)-len(ext)]
+
+	return filepath.Join(dir, fmt.Sprintf("%s-%d%s", baseWithoutExt, index, ext))
+}
+
+// getUnusedPath 检查文件是否存在，并返回一个唯一的文件路径
+func getUnusedPath(originalPath string) string {
+
+	// 检查文件是否存在
+	if _, err := os.Stat(originalPath); os.IsNotExist(err) {
+		// 文件不存在，返回新路径
+		return originalPath
+	}
+
+	base := filepath.Base(originalPath)
+	dir := filepath.Dir(originalPath)
+	ext := filepath.Ext(base)
+	baseWithoutExt := base[:len(base)-len(ext)]
+
+	index := 1
+	for {
+		// 构造新的文件名
+		newBase := fmt.Sprintf("%s(%d)%s", baseWithoutExt, index, ext)
+		newPath := filepath.Join(dir, newBase)
+
+		// 检查文件是否存在
+		if _, err := os.Stat(newPath); os.IsNotExist(err) {
+			// 文件不存在，返回新路径
+			return newPath
+		}
+
+		// 文件存在，增加索引并重试
+		index++
+	}
 }

@@ -10,3 +10,4 @@ __debug_bin*.exe
 *.syso
 /icon_*.ico
 /.idea
+/*.pdf
