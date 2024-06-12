@@ -613,6 +613,7 @@ func (v *View) GetMainWebFrame() (WkeWebFrameHandle, error) {
 
 type WithWkePrintSettings func(setting *WkePrintSettings)
 
+// 保存主 WebFrame 的内容到 PDF
 func (v *View) SaveToPDF(path string, withSetting ...WithWkePrintSettings) error {
 	frameId, err := v.GetMainWebFrame()
 	if err != nil {
@@ -622,6 +623,7 @@ func (v *View) SaveToPDF(path string, withSetting ...WithWkePrintSettings) error
 	return v.SaveWebFrameToPDF(frameId, path, withSetting...)
 }
 
+// 保存指定 WebFrame 的内容到 PDF
 func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSetting ...WithWkePrintSettings) error {
 
 	// 假设A4纸张，每边1厘米的边距，DPI为600
