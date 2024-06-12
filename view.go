@@ -669,6 +669,8 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSet
 	// sizes := (*(*[1 << 31]uintptr)(unsafe.Pointer(pd.sizes)))[:pd.count:pd.count]
 	// datasPtrs := (*(*[1 << 31]uintptr)(unsafe.Pointer(pd.datas)))[:pd.count:pd.count]
 
+	finalFilePath = make([]string, pd.count)
+
 	if pd.count == 1 {
 		dataPtr := datasPtrs[0]
 		size := sizes[0]
@@ -683,11 +685,9 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSet
 			return
 		}
 
-		finalFilePath = []string{final}
+		finalFilePath[0] = final
 		return
 	}
-
-	finalFilePath = make([]string, pd.count)
 
 	// 遍历slice里的二进制数据
 	for i := 0; i < pd.count; i++ {
@@ -705,6 +705,86 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, path string, withSet
 		if err != nil {
 			return
 		}
+	}
+
+	return
+}
+
+// 打印主 WebFrame 为 PDF 格式，返回二进制数据
+//
+// 注意！此函数涉及内存数据拷贝，如仅需保存 PDF 文件，请使用 SaveToPDF
+func (v *View) PrintToPDF(withSetting ...WithWkePrintSettings) (pdfFiles [][]byte, err error) {
+	frameId, err := v.GetMainWebFrame()
+	if err != nil {
+		return
+	}
+
+	return v.PrintWebFrameToPDF(frameId, withSetting...)
+}
+
+// 打印指定 WebFrame 为 PDF 格式，返回二进制数据
+//
+// 注意！此函数涉及内存数据拷贝，如仅需保存 PDF 文件，请使用 SaveWebFrameToPDF
+func (v *View) PrintWebFrameToPDF(frameId WkeWebFrameHandle, withSetting ...WithWkePrintSettings) (pdfFiles [][]byte, err error) {
+	// 假设A4纸张，每边1厘米的边距，DPI为600
+	setting := WkePrintSettings{
+		structSize:               48, // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
+		Dpi:                      600,
+		Width:                    4960, // A4纸张宽度转换为像素（600 DPI）
+		Height:                   7016, // A4纸张高度转换为像素（600 DPI）
+		MarginTop:                236,  // 1厘米边距转换为像素（600 DPI）
+		MarginBottom:             236,
+		MarginLeft:               236,
+		MarginRight:              236,
+		IsPrintPageHeadAndFooter: TRUE,  // 是否打印页眉页脚
+		IsPrintBackgroud:         TRUE,  // 是否打印背景
+		IsLandscape:              FALSE, // 是否横向打印
+		IsPrintToMultiPage:       FALSE, // 是否打印到多页
+	}
+
+	for _, withSet := range withSetting {
+		withSet(&setting)
+	}
+
+	r1, _, err := v.mb.CallFunc("wkeUtilPrintToPdf", uintptr(v.Hwnd), uintptr(frameId), uintptr(unsafe.Pointer(&setting)))
+	if err != nil {
+		return
+	}
+	// 释放内存
+	defer v.mb.CallFuncAsync("wkeUtilRelasePrintPdfDatas", r1)
+
+	pd := (*wkePdfDatas)(unsafe.Pointer(r1))
+
+	if pd.count == 0 {
+		err = errors.New("生成 PDF 失败")
+		return
+	}
+
+	sizes := SlicesFromPtr[uintptr](pd.sizes, pd.count)
+	datasPtrs := SlicesFromPtr[uintptr](pd.datas, pd.count)
+
+	pdfFiles = make([][]byte, pd.count)
+
+	if pd.count == 1 {
+		dataPtr := datasPtrs[0]
+		size := sizes[0]
+
+		// 拷贝数据
+		chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
+
+		pdfFiles[0] = chunk
+		return
+	}
+
+	// 遍历slice里的二进制数据
+	for i := 0; i < pd.count; i++ {
+		dataPtr := datasPtrs[i]
+		size := sizes[i]
+
+		// 拷贝数据
+		chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
+
+		pdfFiles[i] = chunk
 	}
 
 	return
