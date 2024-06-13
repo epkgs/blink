@@ -770,7 +770,7 @@ func (v *View) PrintWebFrameToPDF(frameId WkeWebFrameHandle, withSetting ...With
 		size := sizes[0]
 
 		// 拷贝数据
-		chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
+		chunk := (*(*[]byte)(unsafe.Pointer(dataPtr)))[:size:size]
 
 		pdfFiles[0] = chunk
 		return
@@ -782,7 +782,7 @@ func (v *View) PrintWebFrameToPDF(frameId WkeWebFrameHandle, withSetting ...With
 		size := sizes[i]
 
 		// 拷贝数据
-		chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
+		chunk := (*(*[]byte)(unsafe.Pointer(dataPtr)))[:size:size]
 
 		pdfFiles[i] = chunk
 	}
