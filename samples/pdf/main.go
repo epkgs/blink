@@ -15,11 +15,8 @@ func main() {
 	defer app.Free()
 
 	view := app.CreateWebWindowPopup()
-	view.Window.SetIconFromBytes(icon)
-	view.Window.SetTitle("miniblink窗口")
-	view.Window.MoveToCenter()
+	view.SetHeadlessEnabled(true) // 开启无头模式
 	view.LoadURL("https://www.baidu.com")
-	view.ShowWindow() // 可不显示窗口，静默进行
 
 	pwd, _ := os.Getwd()
 
