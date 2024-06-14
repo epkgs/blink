@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"time"
@@ -33,12 +34,21 @@ func main() {
 			}
 			// 已触发 document ready，取消监听
 			stop()
+			// 截图完成就退出
+			defer os.Exit(0)
 			// 等待图片加载完成
 			time.Sleep(time.Second * 3)
+			// 生成文件
+			file, err := os.Create(path.Join(pwd, "screenshot.pdf"))
+			if err != nil {
+				fmt.Printf("创建文件出错：%s\n", err.Error())
+				return
+			}
+			defer file.Close()
 			// 保存为pdf
-			view.SaveWebFrameToPDF(frame, path.Join(pwd, "screenshot.pdf"))
-			// 截图完成，退出
-			os.Exit(0)
+			view.SaveWebFrameToPDF(frame, file)
+
+			fmt.Printf("生成PDF文件完成\n")
 		}()
 	})
 

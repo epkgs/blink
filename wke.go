@@ -200,7 +200,7 @@ type WkePrintSettings struct {
 	IsPrintPageHeadAndFooter BOOL  // 是否打印页眉页脚
 	IsPrintBackgroud         BOOL  // 是否打印背景
 	IsLandscape              BOOL  // 是否横向打印
-	IsPrintToMultiPage       BOOL  // 是否打印到多页（分开保存为多个文档）
+	isPrintToMultiPage       BOOL  // 是否打印到多页（分开保存为多个文档）
 }
 
 type wkePdfDatas struct {
