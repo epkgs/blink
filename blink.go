@@ -25,6 +25,12 @@ type CallFuncJob struct {
 	result   chan CallFuncResult
 }
 
+func (cj *CallFuncJob) Wait() (r1 uintptr, r2 uintptr, err error) {
+	result := <-cj.result
+
+	return result.R1, result.R2, result.Err
+}
+
 type CallFuncResult struct {
 	R1  uintptr
 	R2  uintptr
@@ -189,10 +195,7 @@ func (mb *Blink) CallFunc(funcName string, args ...uintptr) (r1 uintptr, r2 uint
 
 	// 如果和调用 MB 的线程不一致，则塞入 chan 队列，等待执行
 	if mb.threadID != threadID {
-
-		rst := <-mb.CallFuncAsync(funcName, args...)
-
-		return rst.R1, rst.R2, rst.Err
+		return mb.CallFuncAsync(funcName, args...).Wait()
 	}
 
 	// 一致，则直接执行
@@ -205,17 +208,14 @@ func (mb *Blink) CallFuncFirst(funcName string, args ...uintptr) (r1 uintptr, r2
 
 	// 如果和调用 MB 的线程不一致，则塞入 chan 队列，等待执行
 	if mb.threadID != threadID {
-
-		rst := <-mb.CallFuncAsyncFirst(funcName, args...)
-
-		return rst.R1, rst.R2, rst.Err
+		return mb.CallFuncAsyncFirst(funcName, args...).Wait()
 	}
 
 	// 一致，则直接执行
 	return mb.doCallFunc(funcName, args...)
 }
 
-func (mb *Blink) CallFuncAsync(funcName string, args ...uintptr) chan CallFuncResult {
+func (mb *Blink) CallFuncAsync(funcName string, args ...uintptr) *CallFuncJob {
 
 	job := CallFuncJob{
 		funcName: funcName,
@@ -224,10 +224,10 @@ func (mb *Blink) CallFuncAsync(funcName string, args ...uintptr) chan CallFuncRe
 	}
 	mb.calls.AddLast(job)
 
-	return job.result
+	return &job
 }
 
-func (mb *Blink) CallFuncAsyncFirst(funcName string, args ...uintptr) chan CallFuncResult {
+func (mb *Blink) CallFuncAsyncFirst(funcName string, args ...uintptr) *CallFuncJob {
 
 	job := CallFuncJob{
 		funcName: funcName,
@@ -236,7 +236,7 @@ func (mb *Blink) CallFuncAsyncFirst(funcName string, args ...uintptr) chan CallF
 	}
 	mb.calls.AddFirst(job)
 
-	return job.result
+	return &job
 }
 
 // 将单个任务塞入队列，仅执行一次
