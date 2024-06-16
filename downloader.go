@@ -8,11 +8,11 @@ import (
 	"math"
 	"mime"
 	"net/http"
-	"net/url"
 	netUrl "net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -26,6 +26,8 @@ import (
 type Downloader struct {
 	lastJobId uint64
 	DownloadOption
+
+	afterCreateJobInterceptor AfterCreateJobInterceptor
 }
 
 type DownloadJob struct {
@@ -33,25 +35,32 @@ type DownloadJob struct {
 	DownloadOption
 
 	id             uint64
-	url            *netUrl.URL
-	dir            string
-	filename       string
-	size           int64
+	Url            *netUrl.URL
+	FileName       string
+	FileSize       int64
 	isSupportRange bool
 	isFtp          bool
 }
 
 type DownloadOption struct {
 	Dir                  string // 下载路径，如果为空则使用当前目录
-	Threads              int    // 下载线程
-	EnableSaveFileDialog bool   // 是否打开保存文件对话框
+	FileNamePrefix       string // 文件名前缀，默认空
+	MaxThreads           int    // 下载线程，默认4
+	MinChunkSize         int64  // 最小分块大小，默认500KB
+	EnableSaveFileDialog bool   // 是否打开保存文件对话框，默认true
+	Overwrite            bool   // 是否覆盖已存在的文件，默认false
 }
+
+type AfterCreateJobInterceptor func(job *DownloadJob)
 
 func (opt DownloadOption) cloneOption() DownloadOption {
 	return DownloadOption{
 		Dir:                  opt.Dir,
-		Threads:              opt.Threads,
+		FileNamePrefix:       opt.FileNamePrefix,
+		MaxThreads:           opt.MaxThreads,
+		MinChunkSize:         opt.MinChunkSize,
 		EnableSaveFileDialog: opt.EnableSaveFileDialog,
+		Overwrite:            opt.Overwrite,
 	}
 }
 
@@ -65,8 +74,11 @@ func NewDownloader(withOption ...func(*DownloadOption)) *Downloader {
 	// 默认参数
 	opt := DownloadOption{
 		Dir:                  pwd,
-		Threads:              4,
+		FileNamePrefix:       "",
+		MaxThreads:           4,
+		MinChunkSize:         500 * 1024, // 500KB
 		EnableSaveFileDialog: true,
+		Overwrite:            false,
 	}
 
 	for _, set := range withOption {
@@ -77,6 +89,9 @@ func NewDownloader(withOption ...func(*DownloadOption)) *Downloader {
 		lastJobId:      0,
 		DownloadOption: opt,
 	}
+
+	// 空实现
+	downloader.afterCreateJobInterceptor = func(job *DownloadJob) {}
 
 	return downloader
 }
@@ -109,18 +124,91 @@ func (d *Downloader) NewJob(url string, withOption ...func(*DownloadOption)) (*D
 		DownloadOption: opt,
 
 		id:             d.lastJobId,
-		url:            Url,
-		filename:       filepath.Base(Url.Path),
-		size:           0,
+		Url:            Url,
+		FileName:       "",
+		FileSize:       0,
 		isSupportRange: false,
 		isFtp:          Url.Scheme == "ftp",
 	}
 
+	d.afterCreateJobInterceptor(job)
+
 	return job, nil
 }
 
+func (d *Downloader) AfterCreateJob(interceptor AfterCreateJobInterceptor) {
+	d.afterCreateJobInterceptor = interceptor
+}
+
 func (job *DownloadJob) TargetFile() string {
-	return filepath.Join(job.Dir, job.filename)
+
+	if filepath.IsAbs(job.FileName) {
+		return job.FileName
+	}
+
+	return filepath.Join(job.Dir, job.FileNamePrefix+job.FileName)
+}
+
+func (job *DownloadJob) createTargetFile() (*os.File, error) {
+
+	if job.Overwrite {
+		return os.Create(job.TargetFile())
+	}
+
+	original := job.TargetFile()
+	// 检查文件是否存在
+	if _, err := os.Stat(original); os.IsNotExist(err) {
+		// 文件不存在，返回新建文件
+		return os.Create(original)
+	}
+
+	index := 1
+
+	base := job.FileNamePrefix + job.FileName
+	ext := filepath.Ext(base)
+	baseWithoutExt := base[:len(base)-len(ext)]
+
+	for {
+		// 构造新的文件名
+		newBase := fmt.Sprintf("%s(%d)%s", baseWithoutExt, index, ext)
+		newPath := filepath.Join(job.Dir, newBase)
+
+		// 检查文件是否存在
+		if _, err := os.Stat(newPath); os.IsNotExist(err) {
+
+			job.FileName = strings.TrimPrefix(newBase, job.FileNamePrefix)
+
+			// 文件不存在，返回新建文件
+			return os.Create(job.TargetFile())
+		}
+
+		// 文件存在，增加索引并重试
+		index++
+	}
+
+}
+
+func (job *DownloadJob) AvaiableTreads() int {
+
+	if job.MinChunkSize <= 0 {
+		return job.MaxThreads
+	}
+
+	if job.FileSize < job.MinChunkSize {
+		return 1
+	}
+
+	threads := int(math.Ceil(float64(job.FileSize) / float64(job.MinChunkSize)))
+
+	if threads > job.MaxThreads {
+		return job.MaxThreads
+	}
+
+	if threads < 1 {
+		return 1
+	}
+
+	return threads
 }
 
 func (job *DownloadJob) Download() error {
@@ -134,14 +222,14 @@ func (job *DownloadJob) Download() error {
 
 func (job *DownloadJob) downloadFtp() error {
 
-	c, err := ftp.Dial(job.url.Host+job.url.Port(), ftp.DialWithTimeout(5*time.Second))
+	c, err := ftp.Dial(job.Url.Host+job.Url.Port(), ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
 		job.logErr("打开 FTP 出错：" + err.Error())
 		return errors.New("链接 FTP 服务器出错")
 	}
 
-	username := job.url.User.Username()
-	password, _ := job.url.User.Password()
+	username := job.Url.User.Username()
+	password, _ := job.Url.User.Password()
 
 	if username == "" {
 		username = "anonymous"
@@ -157,24 +245,31 @@ func (job *DownloadJob) downloadFtp() error {
 	if job.EnableSaveFileDialog {
 		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
 			dir, file := filepath.Split(path)
-			job.filename = file
+			job.FileName = file
 			job.Dir = dir
 		} else {
 			job.logDebug("用户取消保存。")
 			return nil
 		}
+	} else {
+		job.FileName = filepath.Base(job.Url.Path)
 	}
 
-	job.logDebug("创建任务 %s", job.url.String())
+	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
+		job.logDebug("文件名不正确: %s", job.FileName)
+		return errors.New("文件名不正确。")
+	}
 
-	r, err := c.Retr(job.url.Path)
+	job.logDebug("创建任务 %s", job.Url.String())
+
+	r, err := c.Retr(job.Url.Path)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
 	// 打开文件准备写入
-	file, err := os.Create(job.TargetFile())
+	file, err := job.createTargetFile()
 	if err != nil {
 		return err
 	}
@@ -197,12 +292,12 @@ func (job *DownloadJob) downloadHttp() error {
 		return err
 	}
 
-	job.logDebug("创建任务 %s", job.url)
+	job.logDebug("创建任务 %s", job.Url)
 	if job.EnableSaveFileDialog {
 
 		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
 			dir, file := filepath.Split(path)
-			job.filename = file
+			job.FileName = file
 			job.Dir = dir
 		} else {
 			job.logDebug("用户取消保存。")
@@ -210,14 +305,17 @@ func (job *DownloadJob) downloadHttp() error {
 		}
 	}
 
+	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
+		job.logDebug("文件名不正确: %s", job.FileName)
+		return errors.New("文件名不正确。")
+	}
+
 	if job.isSupportRange {
-		job.logDebug("支持断点续传，线程：%d", job.Threads)
 		if err := job.multiThreadDownload(); err != nil {
 			job.logErr(err.Error())
 			return err
 		}
 	} else {
-		job.logDebug("不支持断点续传，将以单进程模式下载。")
 		if err := job.singleThreadDownload(); err != nil {
 			job.logErr(err.Error())
 			return err
@@ -230,8 +328,10 @@ func (job *DownloadJob) downloadHttp() error {
 
 func (job *DownloadJob) singleThreadDownload() error {
 
+	job.logDebug("文件将以单进程模式下载。")
+
 	// 打开文件准备写入
-	file, err := os.Create(job.TargetFile())
+	file, err := job.createTargetFile()
 	if err != nil {
 		return err
 	}
@@ -239,7 +339,7 @@ func (job *DownloadJob) singleThreadDownload() error {
 
 	// 实现默认下载逻辑
 	// 使用http.Get或其他方式下载整个文件
-	resp, err := http.Get(job.url.String())
+	resp, err := http.Get(job.Url.String())
 	if err != nil {
 		return err
 	}
@@ -250,8 +350,12 @@ func (job *DownloadJob) singleThreadDownload() error {
 }
 
 func (job *DownloadJob) multiThreadDownload() error {
+
+	theads := job.AvaiableTreads()
+	job.logDebug("文件将以多线程进行下载，线程：%d", theads)
+
 	// 打开文件准备写入
-	file, err := os.Create(job.TargetFile())
+	file, err := job.createTargetFile()
 	if err != nil {
 		return err
 	}
@@ -263,16 +367,18 @@ func (job *DownloadJob) multiThreadDownload() error {
 	var errs []error
 	var errLock sync.Mutex
 
-	// 计算每个线程的分块大小
-	chunkSize := int64(math.Ceil(float64(job.size) / float64(job.Threads)))
+	defer cancel() // 取消所有goroutine
 
-	for i := 0; i < job.Threads; i++ {
+	// 计算每个线程的分块大小
+	chunkSize := int64(math.Ceil(float64(job.FileSize) / float64(theads)))
+
+	for i := 0; i < theads; i++ {
 		start := int64(i) * chunkSize
 		end := start + chunkSize - 1
 
 		// 如果是最后一个部分，加上余数
-		if i == job.Threads-1 {
-			end = job.size - 1
+		if i == theads-1 {
+			end = job.FileSize - 1
 		}
 
 		wg.Add(1)
@@ -322,7 +428,7 @@ func (job *DownloadJob) multiThreadDownload() error {
 // downloadChunk 下载文件的单个分块
 func (job *DownloadJob) downloadChunk(mutex *sync.Mutex, file *os.File, start, end int64) error {
 
-	req, err := http.NewRequest("GET", job.url.String(), nil)
+	req, err := http.NewRequest("GET", job.Url.String(), nil)
 	if err != nil {
 		return err
 	}
@@ -356,18 +462,18 @@ func (job *DownloadJob) downloadChunk(mutex *sync.Mutex, file *os.File, start, e
 
 func (job *DownloadJob) fetchInfo() error {
 
-	r, err := http.Head(job.url.String())
+	r, err := http.Head(job.Url.String())
 	if err != nil {
 		return err
 	}
 	defer r.Body.Close()
 
 	if r.StatusCode == 404 {
-		return fmt.Errorf("文件不存在： %s", job.url.String())
+		return fmt.Errorf("文件不存在： %s", job.Url.String())
 	}
 
 	if r.StatusCode > 299 {
-		return fmt.Errorf("连接 %s 出错。", job.url.String())
+		return fmt.Errorf("连接 %s 出错。", job.Url.String())
 	}
 
 	// 检查是否支持 断点续传
@@ -381,11 +487,15 @@ func (job *DownloadJob) fetchInfo() error {
 	contentLength, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
 		job.isSupportRange = false
-		job.size = 0
+		job.FileSize = 0
 		return nil
 	}
 
-	job.size = contentLength
+	job.FileSize = contentLength
+
+	if !job.EnableSaveFileDialog {
+		job.FileName = getFileNameByResponse(r)
+	}
 
 	return nil
 }
@@ -398,17 +508,17 @@ func getFileNameByResponse(resp *http.Response) string {
 		if err != nil {
 			return getFileNameByUrl(resp.Request.URL.Path)
 		}
-		return params["filename"]
+		return params["FileName"]
 	}
 	return getFileNameByUrl(resp.Request.URL.Path)
 }
 
 func getFileNameByUrl(downloadUrl string) string {
-	parsedUrl, _ := url.Parse(downloadUrl)
+	parsedUrl, _ := netUrl.Parse(downloadUrl)
 	return filepath.Base(parsedUrl.Path)
 }
 
-func openSaveFileDialog(fileName string) (filepath string, ok bool) {
+func openSaveFileDialog(filePath string) (filepath string, ok bool) {
 	var ofn win.OPENFILENAME
 	buf := make([]uint16, syscall.MAX_PATH) // 假设路径可能更长，增加缓冲区大小
 	ofn.LStructSize = uint32(unsafe.Sizeof(ofn))
@@ -420,7 +530,7 @@ func openSaveFileDialog(fileName string) (filepath string, ok bool) {
 	ofn.LpstrFilter = &filter[0]
 
 	// 转换文件名到UTF-16，并检查错误
-	if utf16FileName, err := syscall.UTF16FromString(fileName); err == nil {
+	if utf16FileName, err := syscall.UTF16FromString(filePath); err == nil {
 		copy(buf, utf16FileName)
 	}
 
