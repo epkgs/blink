@@ -81,7 +81,7 @@ func NewApp(setups ...func(*Config)) *Blink {
 	blink := &Blink{
 		Config:     config,
 		Resource:   NewResourceLoader(),
-		Downloader: NewDownloader(3),
+		Downloader: NewDownloader(),
 
 		dll:   dll,
 		procs: make(map[string]*windows.Proc),
