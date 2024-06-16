@@ -657,16 +657,13 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, writer io.Writer, wi
 		return errors.New("生成 PDF 失败")
 	}
 
-	sizes := SlicesFromPtr[uintptr](pd.sizes, pd.count)
-	datasPtrs := SlicesFromPtr[uintptr](pd.datas, pd.count)
-	// sizes := (*(*[1 << 31]uintptr)(unsafe.Pointer(pd.sizes)))[:pd.count:pd.count]
-	// datasPtrs := (*(*[1 << 31]uintptr)(unsafe.Pointer(pd.datas)))[:pd.count:pd.count]
+	sizes := unsafe.Slice((*uintptr)(unsafe.Pointer(pd.sizes)), pd.count)
+	datasPtrs := unsafe.Slice((**byte)(unsafe.Pointer(pd.datas)), pd.count)
 
 	dataPtr := datasPtrs[0]
 	size := sizes[0]
 
-	chunk := SlicesFromPtr[byte](dataPtr, int(size))
-	// chunk := (*(*[1 << 31]byte)(unsafe.Pointer(dataPtr)))[:size:size]
+	chunk := unsafe.Slice(dataPtr, int(size))
 
 	if _, err := writer.Write(chunk); err != nil {
 		return err

@@ -336,20 +336,3 @@ func numericFromBytes[T Numeric](src []byte, startIndex int, bit int, isLittleEn
 
 	return num, nil
 }
-
-type goSlice struct {
-	data unsafe.Pointer
-	len  int
-	cap  int
-}
-
-// 直接将内存地址转换为切片，不进行拷贝
-//
-// 注意！ 切勿修改切片内容，否则会导致原内存数据被修改
-func SlicesFromPtr[T interface{}](p uintptr, length int) []T {
-	return *(*[]T)(unsafe.Pointer(&goSlice{
-		data: unsafe.Pointer(p),
-		len:  length,
-		cap:  length,
-	}))
-}
