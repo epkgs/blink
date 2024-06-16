@@ -188,18 +188,18 @@ type BOOL int32
 const TRUE BOOL = 1
 const FALSE BOOL = 0
 
-type WkePrintSettings struct {
+type wkePrintSettings struct {
 	structSize               int32 // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
-	Dpi                      int32 // DPI 默认600
-	Width                    int32 // 纸张宽度，单位 px。（600 DPI 时，转换为像素 A4 的宽度为 4961 px）
-	Height                   int32 // 纸张高度，单位 px。（600 DPI 时，转换为像素 A4 的宽度为 4961 px）
-	MarginTop                int32 // 上边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
-	MarginBottom             int32 // 下边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
-	MarginLeft               int32 // 左边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
-	MarginRight              int32 // 右边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
-	IsPrintPageHeadAndFooter BOOL  // 是否打印页眉页脚
-	IsPrintBackgroud         BOOL  // 是否打印背景
-	IsLandscape              BOOL  // 是否横向打印
+	dpi                      int32 // DPI 默认600
+	width                    int32 // 纸张宽度，单位 px。（600 DPI 时，转换为像素 A4 的宽度为 4961 px）
+	height                   int32 // 纸张高度，单位 px。（600 DPI 时，转换为像素 A4 的宽度为 4961 px）
+	marginTop                int32 // 上边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	marginBottom             int32 // 下边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	marginLeft               int32 // 左边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	marginRight              int32 // 右边距，单位 px。（600 DPI 时， 1厘米边距转换为像素：236 px）
+	isPrintPageHeadAndFooter BOOL  // 是否打印页眉页脚
+	isPrintBackgroud         BOOL  // 是否打印背景
+	isLandscape              BOOL  // 是否横向打印
 	isPrintToMultiPage       BOOL  // 是否打印到多页（分开保存为多个文档）
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -609,10 +610,24 @@ func (v *View) GetMainWebFrame() (WkeWebFrameHandle, error) {
 	return WkeWebFrameHandle(r1), nil
 }
 
-type WithWkePrintSettings func(setting *WkePrintSettings)
+func mm2px(mm float64, dpi int) int {
+	return int(math.Round(float64(dpi) * mm / 25.4))
+}
+
+type PrintSettings struct {
+	DPI          int
+	Width        int // 单位 MM
+	Height       int // 单位 MM
+	MarginTop    int // 单位 MM
+	MarginBottom int // 单位 MM
+	MarginLeft   int // 单位 MM
+	MarginRight  int // 单位 MM
+}
+
+type WithPrintSettings func(s *PrintSettings)
 
 // 保存主 WebFrame 的内容到 PDF
-func (v *View) SaveToPDF(writer io.Writer, withSetting ...WithWkePrintSettings) error {
+func (v *View) SaveToPDF(writer io.Writer, withSetting ...WithPrintSettings) error {
 	frameId, err := v.GetMainWebFrame()
 	if err != nil {
 		return err
@@ -622,32 +637,50 @@ func (v *View) SaveToPDF(writer io.Writer, withSetting ...WithWkePrintSettings) 
 }
 
 // 保存指定 WebFrame 的内容到 PDF
-func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, writer io.Writer, withSetting ...WithWkePrintSettings) error {
+func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, writer io.Writer, withSetting ...WithPrintSettings) error {
 
-	// 假设A4纸张，每边1厘米的边距，DPI为600
-	setting := WkePrintSettings{
-		structSize:               48, // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
-		Dpi:                      600,
-		Width:                    4960, // A4纸张宽度转换为像素（600 DPI）
-		Height:                   7016, // A4纸张高度转换为像素（600 DPI）
-		MarginTop:                236,  // 1厘米边距转换为像素（600 DPI）
-		MarginBottom:             236,
-		MarginLeft:               236,
-		MarginRight:              236,
-		IsPrintPageHeadAndFooter: TRUE,  // 是否打印页眉页脚
-		IsPrintBackgroud:         TRUE,  // 是否打印背景
-		IsLandscape:              FALSE, // 是否横向打印
-		isPrintToMultiPage:       FALSE, // 是否打印到多页
+	// 默认为A4纸张，每边1厘米的边距，DPI为300
+	s := PrintSettings{
+		DPI:          300,
+		Width:        210,
+		Height:       297,
+		MarginTop:    10,
+		MarginBottom: 10,
+		MarginLeft:   10,
+		MarginRight:  10,
 	}
 
 	for _, withSet := range withSetting {
-		withSet(&setting)
+		withSet(&s)
 	}
 
+	// 假设A4纸张，每边1厘米的边距，DPI为600
+	setting := wkePrintSettings{
+		structSize:               48, // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
+		dpi:                      int32(s.DPI),
+		width:                    int32(mm2px(float64(s.Width), s.DPI)),     // 根据 DPI 将纸张宽度 mm 转换为像素 px
+		height:                   int32(mm2px(float64(s.Height), s.DPI)),    // 根据 DPI 将纸张高度 mm 转换为像素 px
+		marginTop:                int32(mm2px(float64(s.MarginTop), s.DPI)), // 根据 DPI 将纸张边距 mm 转换为像素 px
+		marginBottom:             int32(mm2px(float64(s.MarginBottom), s.DPI)),
+		marginLeft:               int32(mm2px(float64(s.MarginLeft), s.DPI)),
+		marginRight:              int32(mm2px(float64(s.MarginRight), s.DPI)),
+		isPrintPageHeadAndFooter: TRUE,  // 是否打印页眉页脚
+		isPrintBackgroud:         TRUE,  // 是否打印背景
+		isLandscape:              FALSE, // 是否横向打印
+		isPrintToMultiPage:       FALSE, // 是否打印到多页
+	}
+
+	if s.Width > s.Height {
+		setting.isLandscape = TRUE // 宽大于高，则横向打印
+	}
+
+	// 调用 wkeUtilPrintToPdf 生成 PDF
 	r1, _, err := v.mb.CallFunc("wkeUtilPrintToPdf", uintptr(v.Hwnd), uintptr(frameId), uintptr(unsafe.Pointer(&setting)))
-	if err != nil {
+	if r1 == 0 && err != nil {
+		// err 为windows的最后一个错误，可能与打印无关。
 		return err
 	}
+
 	// 释放内存
 	defer v.mb.CallFuncAsync("wkeUtilRelasePrintPdfDatas", r1)
 
