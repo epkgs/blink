@@ -664,7 +664,7 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, writer io.Writer, wi
 		marginBottom:             int32(mm2px(float64(s.MarginBottom), s.DPI)),
 		marginLeft:               int32(mm2px(float64(s.MarginLeft), s.DPI)),
 		marginRight:              int32(mm2px(float64(s.MarginRight), s.DPI)),
-		isPrintPageHeadAndFooter: TRUE,  // 是否打印页眉页脚
+		isPrintPageHeadAndFooter: FALSE, // 是否打印页眉页脚
 		isPrintBackgroud:         TRUE,  // 是否打印背景
 		isLandscape:              FALSE, // 是否横向打印
 		isPrintToMultiPage:       FALSE, // 是否打印到多页
