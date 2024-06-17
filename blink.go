@@ -343,35 +343,59 @@ func (mb *Blink) IsInitialize() bool {
 	return r1 != 0
 }
 
-func (mb *Blink) createWebWindow(winType WkeWindowType, parent *View, rectOptional ...WkeRect) *View {
+type WebWindowConfig struct {
+	WkeRect
+}
+
+type WithWebWindowConfig func(config *WebWindowConfig)
+
+// 设置窗口大小
+func WithWebWindowSize(w, h int32) WithWebWindowConfig {
+	return func(config *WebWindowConfig) {
+		config.W = w
+		config.H = h
+	}
+}
+
+// 设置窗口位置
+func WithWebWindowPos(x, y int32) WithWebWindowConfig {
+	return func(config *WebWindowConfig) {
+		config.X = x
+		config.Y = y
+	}
+}
+
+func (mb *Blink) createWebWindow(winType WkeWindowType, parent *View, withConfig ...WithWebWindowConfig) *View {
 	var pHwnd WkeHandle = 0
 	if parent != nil {
 		pHwnd = parent.Hwnd
 	}
 
-	rect := WkeRect{200, 200, 800, 600}
-	if len(rectOptional) >= 1 {
-		rect = rectOptional[0]
+	conf := WebWindowConfig{
+		WkeRect{200, 200, 800, 600},
+	}
+	for _, set := range withConfig {
+		set(&conf)
 	}
 
-	ptr, _, _ := mb.CallFunc("wkeCreateWebWindow", uintptr(winType), uintptr(pHwnd), uintptr(rect.X), uintptr(rect.Y), uintptr(rect.W), uintptr(rect.H))
+	ptr, _, _ := mb.CallFunc("wkeCreateWebWindow", uintptr(winType), uintptr(pHwnd), uintptr(conf.X), uintptr(conf.Y), uintptr(conf.W), uintptr(conf.H))
 	return NewView(mb, WkeHandle(ptr), winType, parent)
 
 }
 
 // 普通窗口
-func (mb *Blink) CreateWebWindowPopup(rectOptional ...WkeRect) *View {
-	return mb.createWebWindow(WKE_WINDOW_TYPE_POPUP, nil, rectOptional...)
+func (mb *Blink) CreateWebWindowPopup(withConfig ...WithWebWindowConfig) *View {
+	return mb.createWebWindow(WKE_WINDOW_TYPE_POPUP, nil, withConfig...)
 }
 
 // 透明窗口
-func (mb *Blink) CreateWebWindowTransparent(rectOptional ...WkeRect) *View {
-	return mb.createWebWindow(WKE_WINDOW_TYPE_TRANSPARENT, nil, rectOptional...)
+func (mb *Blink) CreateWebWindowTransparent(withConfig ...WithWebWindowConfig) *View {
+	return mb.createWebWindow(WKE_WINDOW_TYPE_TRANSPARENT, nil, withConfig...)
 }
 
 // 嵌入在父窗口里的子窗口
-func (mb *Blink) CreateWebWindowControl(parent *View, rectOptional ...WkeRect) *View {
-	return mb.createWebWindow(WKE_WINDOW_TYPE_CONTROL, parent, rectOptional...)
+func (mb *Blink) CreateWebWindowControl(parent *View, withConfig ...WithWebWindowConfig) *View {
+	return mb.createWebWindow(WKE_WINDOW_TYPE_CONTROL, parent, withConfig...)
 }
 
 // 设置response的mime
