@@ -656,7 +656,7 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, writer io.Writer, wi
 
 	// 假设A4纸张，每边1厘米的边距，DPI为600
 	setting := wkePrintSettings{
-		structSize:               48, // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
+		// structSize:               48, // 结构体大小，每个 int 为4, 12个int为48（极个别 C 编译器的int大小为8，暂不予考虑）
 		dpi:                      int32(s.DPI),
 		width:                    int32(mm2px(float64(s.Width), s.DPI)),     // 根据 DPI 将纸张宽度 mm 转换为像素 px
 		height:                   int32(mm2px(float64(s.Height), s.DPI)),    // 根据 DPI 将纸张高度 mm 转换为像素 px
@@ -669,6 +669,8 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, writer io.Writer, wi
 		isLandscape:              FALSE, // 是否横向打印
 		isPrintToMultiPage:       FALSE, // 是否打印到多页
 	}
+
+	setting.structSize = int32(unsafe.Sizeof(setting)) // 使用 unsafe 获取结构体大小，避免 C 编译器的不同
 
 	if s.Width > s.Height {
 		setting.isLandscape = TRUE // 宽大于高，则横向打印
