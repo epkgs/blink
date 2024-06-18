@@ -109,11 +109,15 @@ func NewApp(setups ...func(*Config)) *Blink {
 	return blink
 }
 
-func (mb *Blink) Free() {
-
+func (mb *Blink) CloseAll() {
 	for _, v := range mb.views {
 		v.DestroyWindow()
 	}
+}
+
+func (mb *Blink) Free() {
+
+	mb.CloseAll()
 
 	mb.finalize()
 
