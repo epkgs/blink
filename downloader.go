@@ -43,12 +43,13 @@ type DownloadJob struct {
 }
 
 type DownloadOption struct {
-	Dir                  string // 下载路径，如果为空则使用当前目录
-	FileNamePrefix       string // 文件名前缀，默认空
-	MaxThreads           int    // 下载线程，默认4
-	MinChunkSize         int64  // 最小分块大小，默认500KB
-	EnableSaveFileDialog bool   // 是否打开保存文件对话框，默认true
-	Overwrite            bool   // 是否覆盖已存在的文件，默认false
+	Dir                  string        // 下载路径，如果为空则使用当前目录
+	FileNamePrefix       string        // 文件名前缀，默认空
+	MaxThreads           int           // 下载线程，默认4
+	MinChunkSize         int64         // 最小分块大小，默认500KB
+	EnableSaveFileDialog bool          // 是否打开保存文件对话框，默认true
+	Overwrite            bool          // 是否覆盖已存在的文件，默认false
+	Timeout              time.Duration // 超时时间，默认10秒
 }
 
 type AfterCreateJobInterceptor func(job *DownloadJob)
@@ -61,6 +62,7 @@ func (opt DownloadOption) cloneOption() DownloadOption {
 		MinChunkSize:         opt.MinChunkSize,
 		EnableSaveFileDialog: opt.EnableSaveFileDialog,
 		Overwrite:            opt.Overwrite,
+		Timeout:              opt.Timeout,
 	}
 }
 
@@ -79,6 +81,7 @@ func NewDownloader(withOption ...func(*DownloadOption)) *Downloader {
 		MinChunkSize:         500 * 1024, // 500KB
 		EnableSaveFileDialog: true,
 		Overwrite:            false,
+		Timeout:              10 * time.Second,
 	}
 
 	for _, set := range withOption {
@@ -212,12 +215,16 @@ func (job *DownloadJob) AvaiableTreads() int {
 }
 
 func (job *DownloadJob) Download() error {
+	select {
+	case <-time.After(job.Timeout):
+		return errors.New("下载超时")
+	default:
+		if job.isFtp {
+			return job.downloadFtp()
+		}
 
-	if job.isFtp {
-		return job.downloadFtp()
+		return job.downloadHttp()
 	}
-
-	return job.downloadHttp()
 }
 
 func (job *DownloadJob) downloadFtp() error {
