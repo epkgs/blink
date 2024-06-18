@@ -227,7 +227,8 @@ func (w *Window) udpateCursor() bool {
 
 func (w *Window) Show() {
 	w.mb.AddJob(func() {
-		win.ShowWindow(win.HWND(w.Hwnd), win.SW_SHOW)
+		// win.ShowWindow(win.HWND(w.Hwnd), win.SW_SHOW)
+		win.SetWindowPos(win.HWND(w.Hwnd), win.HWND_TOPMOST, 0, 0, 0, 0, win.SWP_NOMOVE|win.SWP_NOSIZE|win.SWP_SHOWWINDOW)
 	})
 	// w.view.mb.CallFunc("wkeShowWindow", uintptr(w.view.Hwnd), 1)
 }
