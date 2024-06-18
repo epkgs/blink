@@ -115,9 +115,10 @@ func (mb *Blink) Free() {
 		v.DestroyWindow()
 	}
 
-	close(mb.quit)
-
 	mb.finalize()
+
+	close(mb.quit) // quit 退出任务循环，须等待上面任务完成才能退出任务循环
+
 	mb.dll.Release()
 	mb = nil
 }
