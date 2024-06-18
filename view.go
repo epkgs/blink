@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/epkgs/mini-blink/internal/log"
@@ -555,6 +556,35 @@ func (v *View) OnConsole(callback OnConsoleCallback) {
 func (v *View) IsDocumentReady() bool {
 	p, _, _ := v.mb.CallFunc("wkeIsDocumentReady", uintptr(v.Hwnd))
 	return p != 0
+}
+
+// 阻塞等待文档加载完成，仅限主frame
+func (v *View) WaitUntilDocumentReady() bool {
+
+	if v.IsDocumentReady() {
+		return true
+	}
+
+	result := make(chan bool, 2)
+
+	go func() {
+		time.Sleep(10 * time.Second) // 如果超过10秒还没准备好，就放弃
+		result <- false
+	}()
+
+	stop := func() {}
+	stop = v.OnDocumentReady(func(frame WkeWebFrameHandle) {
+		if v.IsMainFrame(frame) {
+			stop()
+			result <- true
+		}
+	})
+
+	rst := <-result
+
+	stop()
+
+	return rst
 }
 
 func (v *View) OnTitleChanged(callback OnTitleChangedCallback) (stop func()) {
