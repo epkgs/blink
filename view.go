@@ -156,8 +156,10 @@ func (v *View) CloseWindow() {
 	v.Window.Close()
 }
 
+// 销毁wkeWebView对应的所有数据结构，包括真实窗口等
 func (v *View) DestroyWindow() {
-	v.Window.Destroy()
+	// v.Window.Destroy()
+	v.mb.CallFunc("wkeDestroyWebWindow", uintptr(v.Hwnd))
 }
 
 func (v *View) Reload() bool {

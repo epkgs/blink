@@ -247,10 +247,10 @@ func (w *Window) Close() {
 }
 
 func (w *Window) Destroy() {
-	w.mb.AddJob(func() {
-		win.DestroyWindow(win.HWND(w.Hwnd))
-	})
-	// w.view.DestroyWindow()
+	// w.mb.AddJob(func() {
+	// 	win.DestroyWindow(win.HWND(w.Hwnd))
+	// })
+	w.view.DestroyWindow()
 }
 
 func (w *Window) MinimizeToTray() {
