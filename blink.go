@@ -98,8 +98,8 @@ func NewApp(setups ...func(*Config)) *Blink {
 	// 启动任务循环
 	blink.loopJobLoops()
 
-	if !blink.IsInitialize() {
-		blink.Initialize()
+	if !blink.isInitialize() {
+		blink.initialize()
 	}
 
 	blink.js = newJS(blink)
@@ -107,10 +107,6 @@ func NewApp(setups ...func(*Config)) *Blink {
 	blink.IPC = newIPC(blink)
 
 	return blink
-}
-
-func (mb *Blink) Exit() {
-	close(mb.quit)
 }
 
 func (mb *Blink) Free() {
@@ -121,8 +117,9 @@ func (mb *Blink) Free() {
 
 	close(mb.quit)
 
-	mb.Finalize()
+	mb.finalize()
 	mb.dll.Release()
+	mb = nil
 }
 
 func (mb *Blink) GetViews() []*View {
@@ -329,15 +326,15 @@ func (mb *Blink) VersionString() string {
 	return PtrToString(ver)
 }
 
-func (mb *Blink) Initialize() {
+func (mb *Blink) initialize() {
 	mb.CallFunc("wkeInitialize")
 }
 
-func (mb *Blink) Finalize() {
+func (mb *Blink) finalize() {
 	mb.CallFunc("wkeFinalize")
 }
 
-func (mb *Blink) IsInitialize() bool {
+func (mb *Blink) isInitialize() bool {
 	r1, _, _ := mb.CallFunc("wkeIsInitialize")
 
 	return r1 != 0
