@@ -347,7 +347,7 @@ type WebWindowConfig struct {
 	WkeRect
 }
 
-type WithWebWindowConfig func(config *WebWindowConfig)
+type WithWebWindowConfig func(c *WebWindowConfig)
 
 // 设置窗口大小
 func WithWebWindowSize(w, h int32) WithWebWindowConfig {

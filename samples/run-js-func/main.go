@@ -20,9 +20,9 @@ func main() {
 	app.Resource.Bind("local", res) // 将内嵌文件夹绑定到 FileSystem
 
 	//一个普通的窗体
-	view := app.CreateWebWindowPopup(blink.WkeRect{
-		W: 800,
-		H: 500,
+	view := app.CreateWebWindowPopup(func(c *blink.WebWindowConfig) {
+		c.W = 800
+		c.H = 600
 	})
 
 	view.Window.SetTitle("JS互操作")

@@ -18,8 +18,9 @@ func main() {
 	res, _ := fs.Sub(static, "static")
 	app.Resource.Bind("local", res) // 将内嵌文件夹绑定到 FileSystem
 
-	view := app.CreateWebWindowTransparent(blink.WkeRect{
-		W: 300, H: 300,
+	view := app.CreateWebWindowTransparent(func(config *blink.WebWindowConfig) {
+		config.W = 300
+		config.H = 300
 	})
 
 	view.Window.DisableBorderResize()
