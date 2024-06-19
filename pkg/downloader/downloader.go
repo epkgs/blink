@@ -25,14 +25,14 @@ import (
 
 type Downloader struct {
 	lastJobId uint64
-	DownloadOption
+	Option
 
 	afterCreateJobInterceptor AfterCreateJobInterceptor
 }
 
-type DownloadJob struct {
+type Job struct {
 	downloader *Downloader
-	DownloadOption
+	Option
 
 	id             uint64
 	Url            *netUrl.URL
@@ -42,7 +42,7 @@ type DownloadJob struct {
 	isFtp          bool
 }
 
-type DownloadOption struct {
+type Option struct {
 	Dir                  string        // 下载路径，如果为空则使用当前目录
 	FileNamePrefix       string        // 文件名前缀，默认空
 	MaxThreads           int           // 下载线程，默认4
@@ -52,10 +52,10 @@ type DownloadOption struct {
 	Timeout              time.Duration // 超时时间，默认10秒
 }
 
-type AfterCreateJobInterceptor func(job *DownloadJob)
+type AfterCreateJobInterceptor func(job *Job)
 
-func (opt DownloadOption) cloneOption() DownloadOption {
-	return DownloadOption{
+func (opt Option) cloneOption() Option {
+	return Option{
 		Dir:                  opt.Dir,
 		FileNamePrefix:       opt.FileNamePrefix,
 		MaxThreads:           opt.MaxThreads,
@@ -66,7 +66,7 @@ func (opt DownloadOption) cloneOption() DownloadOption {
 	}
 }
 
-func New(withOption ...func(*DownloadOption)) *Downloader {
+func New(withOption ...func(*Option)) *Downloader {
 
 	pwd, err := os.Getwd()
 	if err != nil {
@@ -74,7 +74,7 @@ func New(withOption ...func(*DownloadOption)) *Downloader {
 	}
 
 	// 默认参数
-	opt := DownloadOption{
+	opt := Option{
 		Dir:                  pwd,
 		FileNamePrefix:       "",
 		MaxThreads:           4,
@@ -89,17 +89,17 @@ func New(withOption ...func(*DownloadOption)) *Downloader {
 	}
 
 	downloader := &Downloader{
-		lastJobId:      0,
-		DownloadOption: opt,
+		lastJobId: 0,
+		Option:    opt,
 	}
 
 	// 空实现
-	downloader.afterCreateJobInterceptor = func(job *DownloadJob) {}
+	downloader.afterCreateJobInterceptor = func(job *Job) {}
 
 	return downloader
 }
 
-func (d *Downloader) Download(url string, withOption ...func(*DownloadOption)) error {
+func (d *Downloader) Download(url string, withOption ...func(*Option)) error {
 	job, err := d.NewJob(url, withOption...)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func (d *Downloader) Download(url string, withOption ...func(*DownloadOption)) e
 	return job.Download()
 }
 
-func (d *Downloader) NewJob(url string, withOption ...func(*DownloadOption)) (*DownloadJob, error) {
+func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, error) {
 
 	Url, err := netUrl.Parse(url)
 	if err != nil {
@@ -116,15 +116,15 @@ func (d *Downloader) NewJob(url string, withOption ...func(*DownloadOption)) (*D
 
 	d.lastJobId++
 
-	opt := d.DownloadOption.cloneOption()
+	opt := d.Option.cloneOption()
 
 	for _, set := range withOption {
 		set(&opt)
 	}
 
-	job := &DownloadJob{
-		downloader:     d,
-		DownloadOption: opt,
+	job := &Job{
+		downloader: d,
+		Option:     opt,
 
 		id:             d.lastJobId,
 		Url:            Url,
@@ -143,7 +143,7 @@ func (d *Downloader) AfterCreateJob(interceptor AfterCreateJobInterceptor) {
 	d.afterCreateJobInterceptor = interceptor
 }
 
-func (job *DownloadJob) TargetFile() string {
+func (job *Job) TargetFile() string {
 
 	if filepath.IsAbs(job.FileName) {
 		return job.FileName
@@ -152,7 +152,7 @@ func (job *DownloadJob) TargetFile() string {
 	return filepath.Join(job.Dir, job.FileNamePrefix+job.FileName)
 }
 
-func (job *DownloadJob) createTargetFile() (*os.File, error) {
+func (job *Job) createTargetFile() (*os.File, error) {
 
 	if job.Overwrite {
 		return os.Create(job.TargetFile())
@@ -191,7 +191,7 @@ func (job *DownloadJob) createTargetFile() (*os.File, error) {
 
 }
 
-func (job *DownloadJob) AvaiableTreads() int {
+func (job *Job) AvaiableTreads() int {
 
 	if job.MinChunkSize <= 0 {
 		return job.MaxThreads
@@ -214,7 +214,7 @@ func (job *DownloadJob) AvaiableTreads() int {
 	return threads
 }
 
-func (job *DownloadJob) Download() error {
+func (job *Job) Download() error {
 	select {
 	case <-time.After(job.Timeout):
 		return errors.New("下载超时")
@@ -227,7 +227,7 @@ func (job *DownloadJob) Download() error {
 	}
 }
 
-func (job *DownloadJob) downloadFtp() error {
+func (job *Job) downloadFtp() error {
 
 	c, err := ftp.Dial(job.Url.Host+job.Url.Port(), ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
@@ -292,7 +292,7 @@ func (job *DownloadJob) downloadFtp() error {
 	return err
 }
 
-func (job *DownloadJob) downloadHttp() error {
+func (job *Job) downloadHttp() error {
 
 	if err := job.fetchInfo(); err != nil {
 		job.logErr("获取文件信息出错：" + err.Error())
@@ -333,7 +333,7 @@ func (job *DownloadJob) downloadHttp() error {
 	return nil
 }
 
-func (job *DownloadJob) singleThreadDownload() error {
+func (job *Job) singleThreadDownload() error {
 
 	job.logDebug("文件将以单进程模式下载。")
 
@@ -356,7 +356,7 @@ func (job *DownloadJob) singleThreadDownload() error {
 	return err
 }
 
-func (job *DownloadJob) multiThreadDownload() error {
+func (job *Job) multiThreadDownload() error {
 
 	theads := job.AvaiableTreads()
 	job.logDebug("文件将以多线程进行下载，线程：%d", theads)
@@ -433,7 +433,7 @@ func (job *DownloadJob) multiThreadDownload() error {
 }
 
 // downloadChunk 下载文件的单个分块
-func (job *DownloadJob) downloadChunk(mutex *sync.Mutex, file *os.File, start, end int64) error {
+func (job *Job) downloadChunk(mutex *sync.Mutex, file *os.File, start, end int64) error {
 
 	req, err := http.NewRequest("GET", job.Url.String(), nil)
 	if err != nil {
@@ -467,7 +467,7 @@ func (job *DownloadJob) downloadChunk(mutex *sync.Mutex, file *os.File, start, e
 	return err
 }
 
-func (job *DownloadJob) fetchInfo() error {
+func (job *Job) fetchInfo() error {
 
 	r, err := http.Head(job.Url.String())
 	if err != nil {
@@ -550,11 +550,11 @@ func openSaveFileDialog(filePath string) (filepath string, ok bool) {
 	return
 }
 
-func (job *DownloadJob) logDebug(tpl string, vars ...interface{}) {
+func (job *Job) logDebug(tpl string, vars ...interface{}) {
 	log.Debug(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
 
-func (job *DownloadJob) logErr(tpl string, vars ...interface{}) {
+func (job *Job) logErr(tpl string, vars ...interface{}) {
 
 	log.Error(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
 }
