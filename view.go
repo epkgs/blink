@@ -572,10 +572,8 @@ func (v *View) WaitUntilDocumentReady() bool {
 		result <- false
 	}()
 
-	stop := func() {}
-	stop = v.OnDocumentReady(func(frame WkeWebFrameHandle) {
+	stop := v.OnDocumentReady(func(frame WkeWebFrameHandle) {
 		if v.IsMainFrame(frame) {
-			stop()
 			result <- true
 		}
 	})
