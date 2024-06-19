@@ -14,7 +14,8 @@ func main() {
 	app := blink.NewApp()
 	defer app.Free()
 
-	view := app.CreateWebWindowPopup()
+	view := app.CreateWebWindowPopup(blink.WithWebWindowSize(900, 1360)) // DPI 100 的情况下，A4 的尺寸应为 827 x 1170 px，考虑到边框的影响，故设置成 900 x 1360
+
 	view.SetHeadlessEnabled(true) // 开启无头模式
 	view.LoadURL("https://www.baidu.com")
 
@@ -45,7 +46,7 @@ func main() {
 			// 保存为pdf
 			view.SaveWebFrameToPDF(frame, file)
 
-			fmt.Printf("生成PDF文件完成\n")
+			fmt.Printf("生成PDF文件: %s\n", file.Name())
 		}()
 	})
 
