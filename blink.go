@@ -162,26 +162,34 @@ func (mb *Blink) GetWindowByHandle(windowHwnd WkeHandle) (window *Window, exist 
 	return
 }
 
+var winMsgOnce sync.Once
+
+func (mb *Blink) LoopWinMessage() {
+	winMsgOnce.Do(func() {
+
+		msg := &win.MSG{}
+
+		mb.AddLoop(func() {
+
+			if win.GetMessage(msg, 0, 0, 0) <= 0 {
+				return
+			}
+
+			win.TranslateMessage(msg)
+
+			win.DispatchMessage(msg)
+
+		})
+	})
+}
+
 func (mb *Blink) KeepRunning() {
 
 	done := make(chan bool, 1)
 
-	msg := &win.MSG{}
-
-	mb.AddLoop(func() {
-
-		if win.GetMessage(msg, 0, 0, 0) <= 0 {
-			return
-		}
-
-		win.TranslateMessage(msg)
-
-		win.DispatchMessage(msg)
-
-	})
+	mb.LoopWinMessage()
 
 	<-done
-
 }
 
 func (mb *Blink) findProc(name string) *windows.Proc {
