@@ -559,30 +559,29 @@ func (v *View) IsDocumentReady() bool {
 }
 
 // 阻塞等待文档加载完成，仅限主frame
-func (v *View) WaitUntilDocumentReady() bool {
+func (v *View) WaitUntilDocumentReady(timeout time.Duration) bool {
 
 	if v.IsDocumentReady() {
 		return true
 	}
 
-	result := make(chan bool, 2)
+	rst := make(chan bool, 2)
 
-	go func() {
-		time.Sleep(10 * time.Second) // 如果超过10秒还没准备好，就放弃
-		result <- false
-	}()
+	select {
+	case <-time.After(timeout):
+		log.Error("等待文档加载超时")
+		rst <- false
+	default:
+		stop := func() {}
+		stop = v.OnDocumentReady(func(frame WkeWebFrameHandle) {
+			if v.IsMainFrame(frame) {
+				stop()
+				rst <- true
+			}
+		})
+	}
 
-	stop := v.OnDocumentReady(func(frame WkeWebFrameHandle) {
-		if v.IsMainFrame(frame) {
-			result <- true
-		}
-	})
-
-	rst := <-result
-
-	stop()
-
-	return rst
+	return <-rst
 }
 
 func (v *View) OnTitleChanged(callback OnTitleChangedCallback) (stop func()) {
