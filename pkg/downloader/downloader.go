@@ -1,4 +1,4 @@
-package blink
+package downloader
 
 import (
 	"context"
@@ -66,7 +66,7 @@ func (opt DownloadOption) cloneOption() DownloadOption {
 	}
 }
 
-func NewDownloader(withOption ...func(*DownloadOption)) *Downloader {
+func New(withOption ...func(*DownloadOption)) *Downloader {
 
 	pwd, err := os.Getwd()
 	if err != nil {
@@ -533,7 +533,7 @@ func openSaveFileDialog(filePath string) (filepath string, ok bool) {
 	ofn.NMaxFile = uint32(len(buf))
 	ofn.Flags = win.OFN_OVERWRITEPROMPT
 
-	filter := StringToU16Arr("所有文件（*.*）\000*.*\000\000")
+	filter, _ := syscall.UTF16FromString("所有文件（*.*）\000*.*\000\000")
 	ofn.LpstrFilter = &filter[0]
 
 	// 转换文件名到UTF-16，并检查错误

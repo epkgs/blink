@@ -1,4 +1,4 @@
-package blink
+package resource
 
 import (
 	"embed"
@@ -9,10 +9,10 @@ import (
 	"os"
 )
 
-type ResourceLoader map[string]http.FileSystem
+type Resource map[string]http.FileSystem
 
-func NewResourceLoader() *ResourceLoader {
-	loader := make(ResourceLoader)
+func New() *Resource {
+	loader := make(Resource)
 	return &loader
 }
 
@@ -24,7 +24,7 @@ func NewResourceLoader() *ResourceLoader {
 //   - fs.SubFS
 //   - http.FileSystem
 //   - string of directory (The resource will not embed, you should copy the files to the target build directory)
-func (res *ResourceLoader) Bind(domain string, fileSystem interface{}) (err error) {
+func (res *Resource) Bind(domain string, fileSystem interface{}) (err error) {
 	uri, err := netUrl.Parse(domain)
 	if err != nil {
 		return
@@ -52,7 +52,7 @@ func (res *ResourceLoader) Bind(domain string, fileSystem interface{}) (err erro
 	return
 }
 
-func (res *ResourceLoader) Unbind(domain string) {
+func (res *Resource) Unbind(domain string) {
 	uri, err := netUrl.Parse(domain)
 	if err != nil {
 		return
@@ -64,7 +64,7 @@ func (res *ResourceLoader) Unbind(domain string) {
 	delete(*res, dm)
 }
 
-func (res *ResourceLoader) IsExist(domain string) bool {
+func (res *Resource) IsExist(domain string) bool {
 	uri, err := netUrl.Parse(domain)
 	if err != nil {
 		return false
@@ -77,7 +77,7 @@ func (res *ResourceLoader) IsExist(domain string) bool {
 	return exist
 }
 
-func (res *ResourceLoader) GetFile(url string) http.File {
+func (res *Resource) GetFile(url string) http.File {
 
 	uri, err := netUrl.Parse(url)
 	if err != nil {

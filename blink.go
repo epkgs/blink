@@ -7,7 +7,9 @@ import (
 
 	"github.com/epkgs/mini-blink/internal/log"
 	"github.com/epkgs/mini-blink/internal/miniblink"
-	"github.com/epkgs/mini-blink/queue"
+	"github.com/epkgs/mini-blink/pkg/downloader"
+	"github.com/epkgs/mini-blink/pkg/queue"
+	"github.com/epkgs/mini-blink/pkg/resource"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 )
@@ -43,8 +45,8 @@ type Blink struct {
 
 	js *JS
 
-	Resource   *ResourceLoader
-	Downloader *Downloader
+	Resource   *resource.Resource
+	Downloader *downloader.Downloader
 
 	dll   *windows.DLL
 	procs map[string]*windows.Proc
@@ -80,8 +82,8 @@ func NewApp(setups ...func(*Config)) *Blink {
 
 	blink := &Blink{
 		Config:     config,
-		Resource:   NewResourceLoader(),
-		Downloader: NewDownloader(),
+		Resource:   resource.New(),
+		Downloader: downloader.New(),
 
 		dll:   dll,
 		procs: make(map[string]*windows.Proc),
