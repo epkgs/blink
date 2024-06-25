@@ -383,7 +383,7 @@ func WithWebWindowPos(x, y int32) WithWebWindowConfig {
 func (mb *Blink) createWebWindow(winType WkeWindowType, parent *View, withConfig ...WithWebWindowConfig) *View {
 	var pHwnd WkeHandle = 0
 	if parent != nil {
-		pHwnd = parent.Hwnd
+		pHwnd = parent.Window.Hwnd
 	}
 
 	conf := WebWindowConfig{
