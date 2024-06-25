@@ -59,7 +59,7 @@ type Blink struct {
 
 	threadID uint32 // 调用 mb api 的线程 id
 
-	quit     chan bool
+	quit     chan struct{}
 	jobs     chan BlinkJob
 	calls    *queue.Queue[CallFuncJob]
 	jobLoops []func()
@@ -92,7 +92,7 @@ func NewApp(setups ...func(*Config)) *Blink {
 		views:   make(map[WkeHandle]*View),
 		windows: make(map[WkeHandle]*Window),
 
-		quit:     make(chan bool),
+		quit:     make(chan struct{}),
 		jobs:     make(chan BlinkJob, 20),
 		calls:    queue.NewQueue[CallFuncJob](999),
 		jobLoops: []func(){},
@@ -116,6 +116,10 @@ func (mb *Blink) CloseAll() {
 	for _, v := range mb.views {
 		v.DestroyWindow()
 	}
+}
+
+func (mb *Blink) Exit() {
+	mb.Free()
 }
 
 func (mb *Blink) Free() {
@@ -186,11 +190,9 @@ func (mb *Blink) LoopWinMessage() {
 
 func (mb *Blink) KeepRunning() {
 
-	done := make(chan bool, 1)
-
 	mb.LoopWinMessage()
 
-	<-done
+	<-mb.quit
 }
 
 func (mb *Blink) findProc(name string) *windows.Proc {

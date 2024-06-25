@@ -9,7 +9,7 @@ import (
 
 func main() {
 	app := blink.NewApp()
-	defer app.Free()
+	defer app.Exit()
 
 	view := app.CreateWebWindowPopup()
 	view.Window.SetIconFromBytes(icon)

@@ -14,7 +14,7 @@ var static embed.FS
 
 func main() {
 	app := blink.NewApp()
-	defer app.Free()
+	defer app.Exit()
 
 	res, _ := fs.Sub(static, "static")
 	app.Resource.Bind("local", res) // 将内嵌文件夹绑定到 FileSystem

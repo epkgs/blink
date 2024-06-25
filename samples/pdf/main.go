@@ -12,7 +12,7 @@ import (
 
 func main() {
 	app := blink.NewApp()
-	defer app.Free()
+	defer app.Exit()
 
 	view := app.CreateWebWindowPopup(blink.WithWebWindowSize(900, 1360)) // DPI 100 的情况下，A4 的尺寸应为 827 x 1170 px，考虑到边框的影响，故设置成 900 x 1360
 
