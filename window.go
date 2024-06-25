@@ -141,9 +141,9 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			if !w.enableBorderResize {
 				return false
 			}
-			if w.windowType != WKE_WINDOW_TYPE_TRANSPARENT {
-				return false
-			}
+			// if w.windowType != WKE_WINDOW_TYPE_TRANSPARENT {
+			// 	return false
+			// }
 			w.handleMouseMove()
 			return false // 可能还有其他事件
 
@@ -463,4 +463,19 @@ func (w *Window) EnableBorderResize() {
 // 关闭边缘拖动大小功能
 func (w *Window) DisableBorderResize() {
 	w.enableBorderResize = false
+}
+
+// 隐藏标题栏
+func (w *Window) HideCaption() {
+	istyle := win.GetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE)
+	win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION|win.WS_THICKFRAME))
+	// win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION))
+	win.SetWindowPos(win.HWND(w.Hwnd), 0, 0, 0, 0, 0, win.SWP_NOSIZE|win.SWP_NOMOVE|win.SWP_NOZORDER|win.SWP_NOACTIVATE|win.SWP_FRAMECHANGED)
+}
+
+// 显示标题栏
+func (w *Window) ShowCaption() {
+	istyle := win.GetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE)
+	win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle|(win.WS_CAPTION|win.WS_THICKFRAME))
+	win.SetWindowPos(win.HWND(w.Hwnd), 0, 0, 0, 0, 0, win.SWP_NOSIZE|win.SWP_NOMOVE|win.SWP_NOZORDER|win.SWP_NOACTIVATE|win.SWP_FRAMECHANGED)
 }
