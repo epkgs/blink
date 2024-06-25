@@ -7,6 +7,7 @@ import (
 
 	"github.com/epkgs/mini-blink/internal/log"
 	"github.com/epkgs/mini-blink/internal/miniblink"
+	"github.com/epkgs/mini-blink/pkg/alert"
 	"github.com/epkgs/mini-blink/pkg/downloader"
 	"github.com/epkgs/mini-blink/pkg/queue"
 	"github.com/epkgs/mini-blink/pkg/resource"
@@ -69,14 +70,14 @@ func NewApp(setups ...func(*Config)) *Blink {
 	config, err := NewConfig(setups...)
 	if err != nil {
 		log.Error("NewConfig ERR: %v", err)
-		MessageBoxError(0, err.Error())
+		alert.Error(err.Error())
 		panic(err)
 	}
 
 	dll, err := miniblink.LoadDLL(config.GetDllFile(), config.GetTempPath())
 	if err != nil {
 		log.Error("loadDLL ERR: %v", err)
-		MessageBoxError(0, err.Error())
+		alert.Error(err.Error())
 		panic(err)
 	}
 
