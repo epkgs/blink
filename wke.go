@@ -208,6 +208,8 @@ const (
 	WKE_WINDOW_TYPE_TRANSPARENT
 	// 嵌入在父窗口里的子窗口。此时parent需要被设置
 	WKE_WINDOW_TYPE_CONTROL
+	// 隐藏标题栏
+	WKE_WINDOW_TYPE_HIDE_CAPTION
 )
 
 type BOOL int32

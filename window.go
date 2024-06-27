@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/epkgs/mini-blink/internal/log"
@@ -110,17 +111,34 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			lpmmi := (*win.MINMAXINFO)(unsafe.Pointer(lparam))
 
 			// 修正无边框窗口，最大化时的尺寸问题，避免遮挡任务栏
-			if w.isMaximized && w.windowType == WKE_WINDOW_TYPE_TRANSPARENT {
-				hMonitor := win.MonitorFromWindow(win.HWND(w.Hwnd), win.MONITOR_DEFAULTTONEAREST)
-				var monitorInfo win.MONITORINFO
-				monitorInfo.CbSize = uint32(unsafe.Sizeof(monitorInfo))
-				win.GetMonitorInfo(hMonitor, &monitorInfo)
+			if w.isMaximized {
+				if w.windowType == WKE_WINDOW_TYPE_TRANSPARENT || w.windowType == WKE_WINDOW_TYPE_HIDE_CAPTION {
+					hMonitor := win.MonitorFromWindow(win.HWND(w.Hwnd), win.MONITOR_DEFAULTTONEAREST)
+					var monitorInfo win.MONITORINFO
+					monitorInfo.CbSize = uint32(unsafe.Sizeof(monitorInfo))
+					win.GetMonitorInfo(hMonitor, &monitorInfo)
 
-				lpmmi.PtMaxPosition.X = monitorInfo.RcWork.Left
-				lpmmi.PtMaxPosition.Y = monitorInfo.RcWork.Top
-				lpmmi.PtMaxSize.X = monitorInfo.RcWork.Right - monitorInfo.RcWork.Left
-				lpmmi.PtMaxSize.Y = monitorInfo.RcWork.Bottom - monitorInfo.RcWork.Top
+					log.Debug("monitorInfo: %v", monitorInfo)
+
+					lpmmi.PtMaxPosition.X = monitorInfo.RcWork.Left
+					lpmmi.PtMaxPosition.Y = monitorInfo.RcWork.Top
+					lpmmi.PtMaxSize.X = monitorInfo.RcWork.Right - monitorInfo.RcWork.Left
+					lpmmi.PtMaxSize.Y = monitorInfo.RcWork.Bottom - monitorInfo.RcWork.Top
+				}
 			}
+
+			go func() {
+				// 延时更新，等待已处理消息。（等待上面的尺寸修改生效）
+				time.Sleep(10 * time.Millisecond)
+
+				rect := win.RECT{}
+
+				win.GetWindowRect(win.HWND(w.Hwnd), &rect)
+
+				for _, cb := range w.onResizeCallbacks {
+					cb(&rect)
+				}
+			}()
 
 		case WM_TRAYNOTIFY:
 
@@ -530,6 +548,8 @@ func (w *Window) HideCaption() {
 		win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION|win.WS_THICKFRAME))
 		// win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION))
 		win.SetWindowPos(win.HWND(w.Hwnd), 0, 0, 0, 0, 0, win.SWP_NOSIZE|win.SWP_NOMOVE|win.SWP_NOZORDER|win.SWP_NOACTIVATE|win.SWP_FRAMECHANGED)
+
+		w.windowType = WKE_WINDOW_TYPE_HIDE_CAPTION
 	})
 
 }
