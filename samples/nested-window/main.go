@@ -26,22 +26,23 @@ func main() {
 	})
 
 	child := app.CreateWebWindowControl(parent,
-		blink.WithWebWindowSize(800, 570),
-		blink.WithWebWindowPos(0, 30),
+		blink.WithWebWindowSize(800-4, 570-2),
+		blink.WithWebWindowPos(2, 29),
 	)
-	child.LoadURL("https://weixin.qq.com/")
-	child.ShowWindow()
 
 	parent.Window.OnResize(func(r *win.RECT) {
-		width := r.Right - r.Left
-		height := r.Bottom - r.Top - 30
+		width := r.Right - r.Left - 4
+		height := r.Bottom - r.Top - 29 - 2
 
 		// child 的 x, y 坐标是相对于 parent 的
-		child.Window.Resize(0, 30, width, height)
+		child.Window.Resize(2, 29, width, height)
 	})
 
 	parent.LoadURL("http://local/index.html")
+	child.LoadURL("https://weixin.qq.com/")
+
 	parent.ShowWindow()
+	child.ShowWindow()
 
 	app.KeepRunning()
 }
