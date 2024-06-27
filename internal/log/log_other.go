@@ -11,4 +11,5 @@ func log(format string, vars ...interface{}) {
 }
 
 func Debug(format string, vars ...interface{}) {
+	log("[GO-BLINK DEBUG] "+format, vars...)
 }
