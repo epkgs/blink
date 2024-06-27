@@ -89,6 +89,32 @@ const (
 	WkeConsoleLevel_RevokedError
 )
 
+type WkeNavigationType int
+
+const (
+	WKE_NAVIGATION_TYPE_LINKCLICK WkeNavigationType = iota
+	WKE_NAVIGATION_TYPE_FORMSUBMITTED
+	WKE_NAVIGATION_TYPE_BACKFORWARD
+	WKE_NAVIGATION_TYPE_RELOAD
+	WKE_NAVIGATION_TYPE_FORMRESUBMITTED
+	WKE_NAVIGATION_TYPE_OTHER
+)
+
+type WkeWindowFeatures struct {
+	X      int // 窗口x坐标
+	Y      int // 窗口y坐标
+	Width  int // 窗口宽度
+	Height int // 窗口高度
+
+	MenuBarVisible     bool // 是否显示菜单栏
+	StatusBarVisible   bool // 是否显示状态栏
+	ToolBarVisible     bool // 是否显示工具栏
+	LocationBarVisible bool // 是否显示地址栏
+	ScrollbarsVisible  bool // 是否显示滚动条
+	Resizable          bool // 是否可调整大小
+	Fullscreen         bool // 是否全屏显示
+}
+
 type WkeWindowClosingCallback func(view WkeHandle, param uintptr) (boolRes uintptr)
 type WkeWindowDestroyCallback func(view WkeHandle, param uintptr) (voidRes uintptr)
 type WkePaintBitUpdatedCallback func(view WkeHandle, param, buf []byte, rect *WkeRect, width, height int32) (voidRes uintptr)
@@ -103,6 +129,7 @@ type WkeDocumentReady2Callback func(view WkeHandle, param uintptr, frame WkeWebF
 type WkeOnShowDevtoolsCallback func(view WkeHandle, param uintptr) (voidRes uintptr)
 type WkeTitleChangedCallback func(view WkeHandle, param uintptr, title WkeString) (voidRes uintptr)
 type WkeDownloadCallback func(view WkeHandle, param uintptr, url uintptr) (voidRes uintptr)
+type wkeCreateViewCallback func(webView WkeHandle, param uintptr, navigationType WkeNavigationType, url WkeString, windowFeatures *WkeWindowFeatures) WkeHandle
 
 type WkeCursorType int
 
