@@ -4,7 +4,7 @@ import (
 	"embed"
 	"io/fs"
 
-	blink "github.com/epkgs/mini-blink"
+	blink "github.com/epkgs/blink"
 	"github.com/lxn/win"
 )
 

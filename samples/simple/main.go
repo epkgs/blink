@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	blink "github.com/epkgs/mini-blink"
+	blink "github.com/epkgs/blink"
 )
 
 func main() {

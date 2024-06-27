@@ -18,7 +18,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/epkgs/mini-blink/internal/log"
+	"github.com/epkgs/blink/internal/log"
 	"github.com/jlaffaye/ftp"
 	"github.com/lxn/win"
 )

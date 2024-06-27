@@ -11,8 +11,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/epkgs/mini-blink/internal/log"
-	"github.com/epkgs/mini-blink/internal/utils"
+	"github.com/epkgs/blink/internal/log"
+	"github.com/epkgs/blink/internal/utils"
 )
 
 type OnDomEventCallback func()

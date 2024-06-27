@@ -8,9 +8,9 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/epkgs/mini-blink/internal/cast"
-	"github.com/epkgs/mini-blink/internal/log"
-	"github.com/epkgs/mini-blink/internal/utils"
+	"github.com/epkgs/blink/internal/cast"
+	"github.com/epkgs/blink/internal/log"
+	"github.com/epkgs/blink/internal/utils"
 )
 
 const (

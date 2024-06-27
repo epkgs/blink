@@ -3,7 +3,7 @@
 package blink
 
 import (
-	"github.com/epkgs/mini-blink/internal/devtools"
+	"github.com/epkgs/blink/internal/devtools"
 )
 
 func (v *View) ShowDevTools(devtoolsCallbacks ...func(devtools *View)) {

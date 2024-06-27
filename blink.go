@@ -5,12 +5,12 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/epkgs/mini-blink/internal/log"
-	"github.com/epkgs/mini-blink/internal/miniblink"
-	"github.com/epkgs/mini-blink/pkg/alert"
-	"github.com/epkgs/mini-blink/pkg/downloader"
-	"github.com/epkgs/mini-blink/pkg/queue"
-	"github.com/epkgs/mini-blink/pkg/resource"
+	"github.com/epkgs/blink/internal/log"
+	"github.com/epkgs/blink/internal/miniblink"
+	"github.com/epkgs/blink/pkg/alert"
+	"github.com/epkgs/blink/pkg/downloader"
+	"github.com/epkgs/blink/pkg/queue"
+	"github.com/epkgs/blink/pkg/resource"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 )

@@ -1,11 +1,11 @@
-module github.com/epkgs/mini-blink
+module github.com/epkgs/blink
 
 go 1.20
 
 require (
 	github.com/jlaffaye/ftp v0.2.0
 	github.com/lxn/win v0.0.0-20210218163916-a377121e959e
-	golang.org/x/sys v0.20.0
+	golang.org/x/sys v0.21.0
 )
 
 require (
