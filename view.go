@@ -739,3 +739,7 @@ func (v *View) SaveWebFrameToPDF(frameId WkeWebFrameHandle, writer io.Writer, wi
 func (v *View) SetHeadlessEnabled(enable bool) *CallFuncJob {
 	return v.mb.CallFuncAsync("wkeSetHeadlessEnabled", uintptr(v.Hwnd), BoolToPtr(enable))
 }
+
+func (v *View) SetTransparent(transparent bool) {
+	v.mb.CallFunc("wkeSetTransparent", uintptr(v.Hwnd), BoolToPtr(transparent))
+}
