@@ -365,7 +365,7 @@ func (v *View) RunJS(script string) {
 	}
 
 	var stop func()
-	stop = v.OnDocumentReady(func(frame WkeWebFrameHandle) {
+	stop = v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
 		if !v.IsMainFrame(frame) {
 			return
 		}
