@@ -23,7 +23,7 @@ func main() {
 		config.H = 300
 	})
 
-	view.Window.DisableBorderResize()
+	view.Window.EnableBorderResize(false)
 	view.Window.MoveToCenter()
 
 	view.LoadURL("http://local/transparent.html")

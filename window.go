@@ -48,9 +48,11 @@ type Window struct {
 
 	windowType WkeWindowType
 
-	enableBorderResize bool
-	isMaximized        bool
-	fixedTitle         bool
+	borderResizeEnabled   bool
+	borderResizeThickness int32 // border 反应厚度
+
+	isMaximized bool
+	fixedTitle  bool
 
 	sizing WM_SIZING
 
@@ -80,7 +82,7 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 	})
 
 	if window.windowType == WKE_WINDOW_TYPE_TRANSPARENT {
-		window.EnableBorderResize()
+		window.EnableBorderResize(true)
 	}
 
 	return window
@@ -138,21 +140,27 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			}
 
 		case win.WM_MOUSEMOVE:
-			if !w.enableBorderResize {
-				return false
+
+			// 子控件不处理 sizing 事件，转交给父窗口处理
+			if w.windowType == WKE_WINDOW_TYPE_CONTROL && w.view.parent != nil {
+				w.view.parent.Window.triggerSizing()
+			} else {
+				w.triggerSizing()
 			}
-			// if w.windowType != WKE_WINDOW_TYPE_TRANSPARENT {
-			// 	return false
-			// }
-			w.handleMouseMove()
+
 			return false // 可能还有其他事件
 
 		case win.WM_LBUTTONDOWN:
-			if wparam != win.MK_LBUTTON || w.sizing <= 0 {
+			if wparam != win.MK_LBUTTON {
 				return false
 			}
-			win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_SIZE|w.sizing), 0)
-			return true
+
+			// 子控件不处理 sizing 事件，转交给父窗口处理
+			if w.windowType == WKE_WINDOW_TYPE_CONTROL && w.view.parent != nil {
+				return w.view.parent.Window.releaseSizing()
+			} else {
+				return w.releaseSizing()
+			}
 		}
 
 		return false
@@ -166,8 +174,11 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	return win.CallWindowProc(uintptr(w._oldWndProc), win.HWND(hwnd), uint32(message), wparam, lparam)
 }
 
-var border int32 = 5 // 设置 5 像素的 border 反应厚度
-func (w *Window) handleMouseMove() bool {
+func (w *Window) triggerSizing() bool {
+
+	if !w.borderResizeEnabled {
+		return false
+	}
 
 	pt := &win.POINT{}
 	win.GetCursorPos(pt)
@@ -175,10 +186,10 @@ func (w *Window) handleMouseMove() bool {
 	rect := &win.RECT{}
 	win.GetWindowRect(win.HWND(w.Hwnd), rect)
 
-	inLeft := pt.X >= rect.Left && pt.X <= rect.Left+border
-	inReght := pt.X <= rect.Right && pt.X >= rect.Right-border
-	inTop := pt.Y >= rect.Top && pt.Y <= rect.Top+border
-	inBottom := pt.Y <= rect.Bottom && pt.Y >= rect.Bottom-border
+	inLeft := pt.X >= rect.Left && pt.X <= rect.Left+w.borderResizeThickness
+	inReght := pt.X <= rect.Right && pt.X >= rect.Right-w.borderResizeThickness
+	inTop := pt.Y >= rect.Top && pt.Y <= rect.Top+w.borderResizeThickness
+	inBottom := pt.Y <= rect.Bottom && pt.Y >= rect.Bottom-w.borderResizeThickness
 
 	if inLeft && inTop { // 左上角
 		w.sizing = WMSZ_TOPLEFT
@@ -204,6 +215,14 @@ func (w *Window) handleMouseMove() bool {
 
 	// win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.WM_SETCURSOR|w.sizing), win.WM_MOUSEMOVE)
 	w.udpateCursor()
+	return true
+}
+
+func (w *Window) releaseSizing() bool {
+	if w.sizing <= 0 {
+		return false
+	}
+	win.SendMessage(win.HWND(w.Hwnd), win.WM_SYSCOMMAND, uintptr(win.SC_SIZE|w.sizing), 0)
 	return true
 }
 
@@ -456,13 +475,13 @@ func (w *Window) setTitle(title string) {
 }
 
 // 开启边缘拖动大小功能
-func (w *Window) EnableBorderResize() {
-	w.enableBorderResize = true
-}
-
-// 关闭边缘拖动大小功能
-func (w *Window) DisableBorderResize() {
-	w.enableBorderResize = false
+func (w *Window) EnableBorderResize(enable bool, thicknessOpional ...int32) {
+	w.borderResizeEnabled = enable
+	if len(thicknessOpional) > 0 {
+		w.borderResizeThickness = thicknessOpional[0]
+	} else {
+		w.borderResizeThickness = 5 // 默认的拖动边缘宽度
+	}
 }
 
 // 隐藏标题栏
