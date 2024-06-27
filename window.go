@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/epkgs/mini-blink/internal/log"
+	"github.com/epkgs/mini-blink/internal/utils"
 	"github.com/lxn/win"
 )
 
@@ -41,6 +42,10 @@ var (
 	appendMenu = user32.NewProc("AppendMenuW")
 )
 
+type WindowOnResizeCallback func(*win.RECT)
+type WindowOnCreateCallback func(*win.CREATESTRUCT)
+type WindowOnActivateAppCallback func(bool, uintptr)
+
 type Window struct {
 	mb   *Blink
 	view *View
@@ -48,13 +53,12 @@ type Window struct {
 
 	windowType WkeWindowType
 
+	sizing                WM_SIZING
 	borderResizeEnabled   bool
 	borderResizeThickness int32 // border 反应厚度
 
 	isMaximized bool
 	fixedTitle  bool
-
-	sizing WM_SIZING
 
 	_oldWndProc uintptr
 
@@ -62,6 +66,10 @@ type Window struct {
 
 	nid               win.NOTIFYICONDATA
 	useSimpleTrayMenu bool
+
+	onResizeCallbacks      map[string]WindowOnResizeCallback
+	onCreateCallbacks      map[string]WindowOnCreateCallback
+	onActivateAppCallbacks map[string]WindowOnActivateAppCallback
 }
 
 func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
@@ -70,6 +78,10 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 		view:       view,
 		windowType: windowType,
 		Hwnd:       view.GetWindowHandle(),
+
+		onResizeCallbacks:      map[string]WindowOnResizeCallback{},
+		onCreateCallbacks:      map[string]WindowOnCreateCallback{},
+		onActivateAppCallbacks: map[string]WindowOnActivateAppCallback{},
 	}
 
 	window._oldWndProc = win.SetWindowLongPtr(win.HWND(window.Hwnd), win.GWL_WNDPROC, CallbackToPtr(window.hookWindowProc))
@@ -95,9 +107,10 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		case win.WM_ENTERSIZEMOVE:
 			w.udpateCursor()
 		case win.WM_GETMINMAXINFO:
+			lpmmi := (*win.MINMAXINFO)(unsafe.Pointer(lparam))
+
 			// 修正无边框窗口，最大化时的尺寸问题，避免遮挡任务栏
 			if w.isMaximized && w.windowType == WKE_WINDOW_TYPE_TRANSPARENT {
-				lpmmi := (*win.MINMAXINFO)(unsafe.Pointer(lparam))
 				hMonitor := win.MonitorFromWindow(win.HWND(w.Hwnd), win.MONITOR_DEFAULTTONEAREST)
 				var monitorInfo win.MONITORINFO
 				monitorInfo.CbSize = uint32(unsafe.Sizeof(monitorInfo))
@@ -143,9 +156,9 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
 			// 子控件不处理 sizing 事件，转交给父窗口处理
 			if w.windowType == WKE_WINDOW_TYPE_CONTROL && w.view.parent != nil {
-				w.view.parent.Window.triggerSizing()
+				w.view.parent.Window.calcSizing()
 			} else {
-				w.triggerSizing()
+				w.calcSizing()
 			}
 
 			return false // 可能还有其他事件
@@ -157,10 +170,34 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
 			// 子控件不处理 sizing 事件，转交给父窗口处理
 			if w.windowType == WKE_WINDOW_TYPE_CONTROL && w.view.parent != nil {
-				return w.view.parent.Window.releaseSizing()
+				return w.view.parent.Window.triggerSizing()
 			} else {
-				return w.releaseSizing()
+				return w.triggerSizing()
 			}
+
+		case win.WM_SIZING:
+			rect := (*win.RECT)(unsafe.Pointer(lparam))
+
+			for _, cb := range w.onResizeCallbacks {
+				cb(rect)
+			}
+
+		case win.WM_CREATE:
+
+			log.Debug("trigger WM_CREATE")
+			created := (*win.CREATESTRUCT)(unsafe.Pointer(lparam))
+
+			for _, cb := range w.onCreateCallbacks {
+				cb(created)
+			}
+
+		case win.WM_ACTIVATEAPP:
+			actived := wparam == 1
+
+			for _, cb := range w.onActivateAppCallbacks {
+				cb(actived, lparam)
+			}
+
 		}
 
 		return false
@@ -174,7 +211,7 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	return win.CallWindowProc(uintptr(w._oldWndProc), win.HWND(hwnd), uint32(message), wparam, lparam)
 }
 
-func (w *Window) triggerSizing() bool {
+func (w *Window) calcSizing() bool {
 
 	if !w.borderResizeEnabled {
 		return false
@@ -218,7 +255,7 @@ func (w *Window) triggerSizing() bool {
 	return true
 }
 
-func (w *Window) releaseSizing() bool {
+func (w *Window) triggerSizing() bool {
 	if w.sizing <= 0 {
 		return false
 	}
@@ -486,10 +523,15 @@ func (w *Window) EnableBorderResize(enable bool, thicknessOpional ...int32) {
 
 // 隐藏标题栏
 func (w *Window) HideCaption() {
-	istyle := win.GetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE)
-	win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION|win.WS_THICKFRAME))
-	// win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION))
-	win.SetWindowPos(win.HWND(w.Hwnd), 0, 0, 0, 0, 0, win.SWP_NOSIZE|win.SWP_NOMOVE|win.SWP_NOZORDER|win.SWP_NOACTIVATE|win.SWP_FRAMECHANGED)
+	var stop func()
+	stop = w.OnActivateApp(func(b bool, u uintptr) {
+		stop()
+		istyle := win.GetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE)
+		win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION|win.WS_THICKFRAME))
+		// win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle&^(win.WS_CAPTION))
+		win.SetWindowPos(win.HWND(w.Hwnd), 0, 0, 0, 0, 0, win.SWP_NOSIZE|win.SWP_NOMOVE|win.SWP_NOZORDER|win.SWP_NOACTIVATE|win.SWP_FRAMECHANGED)
+	})
+
 }
 
 // 显示标题栏
@@ -497,4 +539,37 @@ func (w *Window) ShowCaption() {
 	istyle := win.GetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE)
 	win.SetWindowLong(win.HWND(w.Hwnd), win.GWL_STYLE, istyle|(win.WS_CAPTION|win.WS_THICKFRAME))
 	win.SetWindowPos(win.HWND(w.Hwnd), 0, 0, 0, 0, 0, win.SWP_NOSIZE|win.SWP_NOMOVE|win.SWP_NOZORDER|win.SWP_NOACTIVATE|win.SWP_FRAMECHANGED)
+}
+
+// 修改窗口大小
+func (w *Window) Resize(x, y, width, height int32) {
+	win.SetWindowPos(win.HWND(w.Hwnd), 0, x, y, width, height, win.SWP_NOZORDER|win.SWP_NOACTIVATE)
+}
+
+// Resize 事件
+func (w *Window) OnResize(callback WindowOnResizeCallback) (stop func()) {
+	key := utils.RandString(6)
+	w.onResizeCallbacks[key] = callback
+
+	return func() {
+		delete(w.onResizeCallbacks, key)
+	}
+}
+
+// Create 事件
+func (w *Window) OnCreate(callback WindowOnCreateCallback) (stop func()) {
+	key := utils.RandString(6)
+	w.onCreateCallbacks[key] = callback
+	return func() {
+		delete(w.onCreateCallbacks, key)
+	}
+}
+
+// Active APP 事件
+func (w *Window) OnActivateApp(callback WindowOnActivateAppCallback) (stop func()) {
+	key := utils.RandString(6)
+	w.onActivateAppCallbacks[key] = callback
+	return func() {
+		delete(w.onActivateAppCallbacks, key)
+	}
 }
