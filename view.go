@@ -23,6 +23,7 @@ type OnLoadUrlBeginCallback func(url string, job WkeNetJob) bool
 type OnLoadUrlEndCallback func(url string, job WkeNetJob, buf []byte)
 type OnDocumentReadyCallback func(frame WkeWebFrameHandle)
 type OnDidCreateScriptContextCallback func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int)
+type OnWillReleaseScriptContextCallback func(frameId WkeWebFrameHandle, context uintptr, worldId int)
 type OnTitleChangedCallback func(title string)
 type OnDownloadCallback func(url string)
 
@@ -43,16 +44,19 @@ type View struct {
 	mb     *Blink
 	parent *View
 
-	_onDomEvent               *bindEvent[OnDomEventCallback]
-	_onConsole                *bindEvent[OnConsoleCallback]
-	_onClosing                *bindEvent[OnClosingCallback]
-	_onDestroy                *bindEvent[OnDestroyCallback]
-	_onLoadUrlBegin           *bindEvent[OnLoadUrlBeginCallback]
-	_onLoadUrlEnd             *bindEvent[OnLoadUrlEndCallback]
-	_onDocumentReady          *bindEvent[OnDocumentReadyCallback]
-	_onTitleChanged           *bindEvent[OnTitleChangedCallback]
-	_onDownload               *bindEvent[OnDownloadCallback]
-	_onDidCreateScriptContext *bindEvent[OnDidCreateScriptContextCallback]
+	_didCreateScriptContext bool // 标记是否已经创建了脚本上下文 ( 部分页面在 document ready 后仍未创建好 script context )
+
+	_onDomEvent                         *bindEvent[OnDomEventCallback]
+	_onConsole                          *bindEvent[OnConsoleCallback]
+	_onClosing                          *bindEvent[OnClosingCallback]
+	_onDestroy                          *bindEvent[OnDestroyCallback]
+	_onLoadUrlBegin                     *bindEvent[OnLoadUrlBeginCallback]
+	_onLoadUrlEnd                       *bindEvent[OnLoadUrlEndCallback]
+	_onDocumentReady                    *bindEvent[OnDocumentReadyCallback]
+	_onTitleChanged                     *bindEvent[OnTitleChangedCallback]
+	_onDownload                         *bindEvent[OnDownloadCallback]
+	_onDidCreateScriptContext           *bindEvent[OnDidCreateScriptContextCallback]
+	_onWillReleaseScriptContextCallback *bindEvent[OnWillReleaseScriptContextCallback]
 }
 
 func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*View) *View {
@@ -68,16 +72,17 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 		Hwnd:   hwnd,
 		parent: p,
 
-		_onDomEvent:               newBindEvent[OnDomEventCallback](),
-		_onConsole:                newBindEvent[OnConsoleCallback](),
-		_onClosing:                newBindEvent[OnClosingCallback](),
-		_onDestroy:                newBindEvent[OnDestroyCallback](),
-		_onLoadUrlBegin:           newBindEvent[OnLoadUrlBeginCallback](),
-		_onLoadUrlEnd:             newBindEvent[OnLoadUrlEndCallback](),
-		_onDocumentReady:          newBindEvent[OnDocumentReadyCallback](),
-		_onTitleChanged:           newBindEvent[OnTitleChangedCallback](),
-		_onDownload:               newBindEvent[OnDownloadCallback](),
-		_onDidCreateScriptContext: newBindEvent[OnDidCreateScriptContextCallback](),
+		_onDomEvent:                         newBindEvent[OnDomEventCallback](),
+		_onConsole:                          newBindEvent[OnConsoleCallback](),
+		_onClosing:                          newBindEvent[OnClosingCallback](),
+		_onDestroy:                          newBindEvent[OnDestroyCallback](),
+		_onLoadUrlBegin:                     newBindEvent[OnLoadUrlBeginCallback](),
+		_onLoadUrlEnd:                       newBindEvent[OnLoadUrlEndCallback](),
+		_onDocumentReady:                    newBindEvent[OnDocumentReadyCallback](),
+		_onTitleChanged:                     newBindEvent[OnTitleChangedCallback](),
+		_onDownload:                         newBindEvent[OnDownloadCallback](),
+		_onDidCreateScriptContext:           newBindEvent[OnDidCreateScriptContextCallback](),
+		_onWillReleaseScriptContextCallback: newBindEvent[OnWillReleaseScriptContextCallback](),
 	}
 
 	view.Window = newWindow(mb, view, windowType)
@@ -86,6 +91,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 	view.SetCookieJarFullPath(view.mb.Config.GetCookieFileABS())
 
 	view.registerFileSystem()
+	view.watchScriptContextState()
 
 	view.listenMinBtnClick()
 	view.listenMaxBtnClick()
@@ -140,9 +146,7 @@ func (v *View) injectBootScripts() {
 		script += s + ";\n"
 	}
 
-	v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
-		v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
-	})
+	v.RunJS(script)
 }
 
 func (v *View) ShowWindow() {
@@ -363,24 +367,42 @@ func (v *View) GetRect() *WkeRect {
 	return (*WkeRect)(unsafe.Pointer(ptr))
 }
 
+// 仅作用于 主frame，会自动判断是否 document ready，仅执行一次
+func (v *View) DoWhenDocumentReady(callback func()) {
+	if v.IsDocumentReady() {
+		callback()
+	} else {
+		stop := func() {}
+		stop = v.OnDocumentReady(func(frame WkeWebFrameHandle) {
+			if !v.IsMainFrame(frame) {
+				return
+			}
+			stop()
+			callback()
+		})
+	}
+}
+
+// 仅作用于 主frame，会自动判断是否已创建 Script Context，仅执行一次
+func (v *View) DoWhenDidCreateScriptContext(callback func()) {
+	if v.IsDidCreateScriptContext() {
+		callback()
+	} else {
+		stop := func() {}
+		stop = v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
+			if !v.IsMainFrame(frame) {
+				return
+			}
+			stop()
+			callback()
+		})
+	}
+}
+
 // 仅作用于 主frame，会自动判断是否 document ready
 func (v *View) RunJS(script string) {
-
-	if v.IsDocumentReady() {
+	v.DoWhenDocumentReady(func() {
 		v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
-		return
-	}
-
-	var stop func()
-	stop = v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
-		if !v.IsMainFrame(frame) {
-			return
-		}
-		v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
-
-		if stop != nil {
-			stop() // 执行完毕就停止，不重复执行
-		}
 	})
 }
 
@@ -392,16 +414,15 @@ func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string, isInClosure 
 		return
 	}
 
-	var stop func()
+	stop := func() {}
 	stop = v.OnDocumentReady(func(readyFrame WkeWebFrameHandle) {
 		if readyFrame != frame {
 			return
 		}
-		v.mb.CallFunc("wkeRunJsByFrame", uintptr(frame), StringToPtr(script), BoolToPtr(isInClosure))
 
-		if stop != nil {
-			stop() // 执行完毕就停止，不重复执行
-		}
+		stop() // 执行完毕就停止，不重复执行
+
+		v.mb.CallFunc("wkeRunJsByFrame", uintptr(frame), StringToPtr(script), BoolToPtr(isInClosure))
 	})
 }
 
@@ -431,8 +452,41 @@ func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallbac
 	}
 }
 
+func (v *View) OnWillReleaseScriptContext(callback OnWillReleaseScriptContextCallback) (stop func()) {
+	v._onWillReleaseScriptContextCallback.Register.Do(func() {
+		var cb WkeWillReleaseScriptContextCallback = func(webView WkeHandle, param uintptr, frameId WkeWebFrameHandle, context uintptr, worldId int) (voidRes uintptr) {
+			for _, callback := range v._onWillReleaseScriptContextCallback.Callbacks {
+				callback(frameId, context, worldId)
+			}
+			return 0
+		}
+
+		v.mb.CallFunc("wkeOnWillReleaseScriptContext", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+	})
+
+	key := utils.RandString(8)
+	v._onWillReleaseScriptContextCallback.Callbacks[key] = callback
+
+	return func() {
+		delete(v._onWillReleaseScriptContextCallback.Callbacks, key)
+	}
+}
+
+func (v *View) watchScriptContextState() {
+	v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
+		v._didCreateScriptContext = true
+	})
+	v.OnWillReleaseScriptContext(func(frameId WkeWebFrameHandle, context uintptr, worldId int) {
+		v._didCreateScriptContext = false
+	})
+}
+
+func (v *View) IsDidCreateScriptContext() bool {
+	return v._didCreateScriptContext
+}
+
 // JS.bind(".mb-minimize-btn", "click", func)
-func (v *View) AddEventListener(selector, eventType string, callback func(), preScripts ...string) {
+func (v *View) AddEventListener(selector, eventType string, callback func(), preScripts ...string) (stop func()) {
 
 	script := `
 	(()=>{
@@ -498,6 +552,10 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 	v._onDomEvent.Callbacks[key] = callback // 增加 callback
 
 	v.RunJS(script)
+
+	return func() {
+		delete(v._onDomEvent.Callbacks, key)
+	}
 }
 
 func (v *View) RemoveEventListener(selector, eventType string) {
@@ -536,6 +594,7 @@ func (v *View) listenCloseBtnClick() {
 // 监听窗口拖动
 func (v *View) listenCaptionDrag() {
 
+	// 如果是在禁止拖动区域，则不监听
 	preScript := `if(e.target.closest('.mb-caption-nodrag')) return;`
 
 	v.AddEventListener(".mb-caption-drag", "mousedown", func() {

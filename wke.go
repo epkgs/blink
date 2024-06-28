@@ -122,6 +122,7 @@ type WkeNetResponseCallback func(view WkeHandle, param uintptr, url string, job 
 type WkeLoadUrlBeginCallback func(view WkeHandle, param uintptr, url string, job WkeNetJob) (boolRes uintptr)
 type WkeJsNativeFunction func(es JsExecState, param uintptr) (voidRes uintptr)
 type WkeDidCreateScriptContextCallback func(view WkeHandle, param uintptr, frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) (voidRes uintptr)
+type WkeWillReleaseScriptContextCallback func(webView WkeHandle, param uintptr, frameId WkeWebFrameHandle, context uintptr, worldId int) (voidRes uintptr)
 type WkeConsoleCallback func(view WkeHandle, param uintptr, level WkeConsoleLevel, message, sourceName WkeString, sourceLine uint32, stackTrace WkeString) (voidRes uintptr)
 type WkeLoadUrlEndCallback func(view WkeHandle, param uintptr, url string, job WkeNetJob, buf []byte) (voidRes uintptr)
 type WkeLoadUrlFailCallback func(view WkeHandle, param, url string, job WkeNetJob) (voidRes uintptr)
@@ -129,7 +130,7 @@ type WkeDocumentReady2Callback func(view WkeHandle, param uintptr, frame WkeWebF
 type WkeOnShowDevtoolsCallback func(view WkeHandle, param uintptr) (voidRes uintptr)
 type WkeTitleChangedCallback func(view WkeHandle, param uintptr, title WkeString) (voidRes uintptr)
 type WkeDownloadCallback func(view WkeHandle, param uintptr, url uintptr) (voidRes uintptr)
-type wkeCreateViewCallback func(webView WkeHandle, param uintptr, navigationType WkeNavigationType, url WkeString, windowFeatures *WkeWindowFeatures) WkeHandle
+type WkeCreateViewCallback func(webView WkeHandle, param uintptr, navigationType WkeNavigationType, url WkeString, windowFeatures *WkeWindowFeatures) WkeHandle
 
 type WkeCursorType int
 
