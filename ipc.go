@@ -375,7 +375,7 @@ func (ipc *IPC) RunJSFunc(view *View, funcName string, args ...interface{}) chan
 
 	msg := IPCMessage{
 		ID:      id,
-		Channel: "runFunc",
+		Channel: "runJSFunc",
 		Args:    newArgs,
 	}
 

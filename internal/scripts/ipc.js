@@ -38,8 +38,8 @@
     const toGO = (msg) => window.top[JS_JS2GO](JSON.stringify(msg))
     const registerHandlerToGo = window.top[JS_REGISTER_HANDLER]
 
-    // 注册 runFunc (仅 JS 端)
-    ipc.handle('runFunc', async function (fn, ...args) {
+    // 注册 runJSFunc (仅 JS 端)
+    ipc.handle('runJSFunc', async function (fn, ...args) {
         const func = window.top[fn]
         if (!func) {
             return new Error(`JS function ${fn} not found!`)
