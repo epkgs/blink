@@ -70,31 +70,6 @@
             display: block;
         }
 
-        header .bg {
-            display: flex;
-            position: absolute;
-            width: 100%;
-            height: 29px;
-            top: 0;
-            left: 0;
-            z-index: -1;
-        }
-
-        header .bg .left {
-            width: 29px;
-            background: url(static/caption_left.bmp) no-repeat;
-        }
-
-        header .bg .main {
-            flex: 1;
-            background: url(static/caption_stretch.bmp) repeat-x;
-        }
-
-        header .bg .right {
-            width: 7px;
-            background: url(static/caption_right.bmp) no-repeat;
-        }
-
         main {
             flex: 1;
             position: relative;
@@ -126,10 +101,16 @@
                 <img src="static/close_down.bmp" class="down" />
             </div>
         </section>
-        <div class="bg">
-            <section class="left"></section>
-            <section class="main"></section>
-            <section class="right"></section>
+        <div class="bg" style="display: flex;position: absolute;width: 100%;height: 29px;top: 0;left: 0;z-index: -1;overflow: hidden;">
+            <section class="left" style="width: 29px;">
+                <img src="static/caption_left.bmp" />
+            </section>
+            <section class="main" style="flex:1;">
+                <img src="static/caption_stretch.bmp" style="width: 100%; height:29px;" alt="Background Image">
+            </section>
+            <section class="right" style="width: 7px;">
+                <img src="static/caption_right.bmp" />
+            </section>
         </div>
     </header>
     <main>
