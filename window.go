@@ -68,9 +68,9 @@ type Window struct {
 	nid               win.NOTIFYICONDATA
 	useSimpleTrayMenu bool
 
-	onResizeCallbacks      map[string]WindowOnResizeCallback
-	onCreateCallbacks      map[string]WindowOnCreateCallback
-	onActivateAppCallbacks map[string]WindowOnActivateAppCallback
+	_onResize      *bindEvent[WindowOnResizeCallback]
+	_onCreate      *bindEvent[WindowOnCreateCallback]
+	_onActivateApp *bindEvent[WindowOnActivateAppCallback]
 }
 
 func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
@@ -80,9 +80,9 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 		windowType: windowType,
 		Hwnd:       view.GetWindowHandle(),
 
-		onResizeCallbacks:      map[string]WindowOnResizeCallback{},
-		onCreateCallbacks:      map[string]WindowOnCreateCallback{},
-		onActivateAppCallbacks: map[string]WindowOnActivateAppCallback{},
+		_onResize:      newBindEvent[WindowOnResizeCallback](),
+		_onCreate:      newBindEvent[WindowOnCreateCallback](),
+		_onActivateApp: newBindEvent[WindowOnActivateAppCallback](),
 	}
 
 	window._oldWndProc = win.SetWindowLongPtr(win.HWND(window.Hwnd), win.GWL_WNDPROC, CallbackToPtr(window.hookWindowProc))
@@ -135,7 +135,7 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
 				win.GetWindowRect(win.HWND(w.Hwnd), &rect)
 
-				for _, cb := range w.onResizeCallbacks {
+				for _, cb := range w._onResize.Callbacks {
 					cb(&rect)
 				}
 			}()
@@ -196,7 +196,7 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		case win.WM_SIZING:
 			rect := (*win.RECT)(unsafe.Pointer(lparam))
 
-			for _, cb := range w.onResizeCallbacks {
+			for _, cb := range w._onResize.Callbacks {
 				cb(rect)
 			}
 
@@ -205,14 +205,14 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			log.Debug("trigger WM_CREATE")
 			created := (*win.CREATESTRUCT)(unsafe.Pointer(lparam))
 
-			for _, cb := range w.onCreateCallbacks {
+			for _, cb := range w._onCreate.Callbacks {
 				cb(created)
 			}
 
 		case win.WM_ACTIVATEAPP:
 			actived := wparam == 1
 
-			for _, cb := range w.onActivateAppCallbacks {
+			for _, cb := range w._onActivateApp.Callbacks {
 				cb(actived, lparam)
 			}
 
@@ -569,27 +569,27 @@ func (w *Window) Resize(x, y, width, height int32) {
 // Resize 事件
 func (w *Window) OnResize(callback WindowOnResizeCallback) (stop func()) {
 	key := utils.RandString(6)
-	w.onResizeCallbacks[key] = callback
+	w._onResize.Callbacks[key] = callback
 
 	return func() {
-		delete(w.onResizeCallbacks, key)
+		delete(w._onResize.Callbacks, key)
 	}
 }
 
 // Create 事件
 func (w *Window) OnCreate(callback WindowOnCreateCallback) (stop func()) {
 	key := utils.RandString(6)
-	w.onCreateCallbacks[key] = callback
+	w._onCreate.Callbacks[key] = callback
 	return func() {
-		delete(w.onCreateCallbacks, key)
+		delete(w._onCreate.Callbacks, key)
 	}
 }
 
 // Active APP 事件
 func (w *Window) OnActivateApp(callback WindowOnActivateAppCallback) (stop func()) {
 	key := utils.RandString(6)
-	w.onActivateAppCallbacks[key] = callback
+	w._onActivateApp.Callbacks[key] = callback
 	return func() {
-		delete(w.onActivateAppCallbacks, key)
+		delete(w._onActivateApp.Callbacks, key)
 	}
 }
