@@ -1,5 +1,7 @@
 package blink
 
+import "unsafe"
+
 type (
 	WkeString         uintptr
 	WkeWebFrameHandle uintptr
@@ -131,6 +133,7 @@ type WkeOnShowDevtoolsCallback func(view WkeHandle, param uintptr) (voidRes uint
 type WkeTitleChangedCallback func(view WkeHandle, param uintptr, title WkeString) (voidRes uintptr)
 type WkeDownloadCallback func(view WkeHandle, param uintptr, url uintptr) (voidRes uintptr)
 type WkeCreateViewCallback func(webView WkeHandle, param uintptr, navigationType WkeNavigationType, url WkeString, windowFeatures *WkeWindowFeatures) WkeHandle
+type WkeOnOtherLoadCallback func(webView WkeHandle, param uintptr, loadType WkeOtherLoadType, info *WkeTempCallbackInfo) (voidRes uintptr)
 
 type WkeCursorType int
 
@@ -237,4 +240,91 @@ type wkePdfDatas struct {
 	count int
 	sizes uintptr
 	datas uintptr // 二进制数据
+}
+
+type WkeOtherLoadType int
+
+const (
+	WKE_DID_START_LOADING WkeOtherLoadType = iota
+	WKE_DID_STOP_LOADING
+	WKE_DID_NAVIGATE
+	WKE_DID_NAVIGATE_IN_PAGE
+	WKE_DID_GET_RESPONSE_DETAILS
+	WKE_DID_GET_REDIRECT_REQUEST
+	WKE_DID_POST_REQUEST
+)
+
+type WkeTempCallbackInfo struct {
+	Size                int
+	Frame               WkeWebFrameHandle
+	WillSendRequestInfo *WkeWillSendRequestInfo
+	URL                 *byte // 在Go中，使用*byte代替const char* (如果字符串以null结尾)
+	PostBody            *WkePostBodyElements
+	Job                 WkeNetJob
+}
+
+// 枚举类型
+type WkeResourceType int
+
+const (
+	WKE_RESOURCE_TYPE_MAIN_FRAME WkeResourceType = iota
+	WKE_RESOURCE_TYPE_SUB_FRAME
+	WKE_RESOURCE_TYPE_STYLESHEET
+	WKE_RESOURCE_TYPE_SCRIPT
+	WKE_RESOURCE_TYPE_IMAGE
+	WKE_RESOURCE_TYPE_FONT_RESOURCE
+	WKE_RESOURCE_TYPE_SUB_RESOURCE
+	WKE_RESOURCE_TYPE_OBJECT
+	WKE_RESOURCE_TYPE_MEDIA
+	WKE_RESOURCE_TYPE_WORKER
+	WKE_RESOURCE_TYPE_SHARED_WORKER
+	WKE_RESOURCE_TYPE_PREFETCH
+	WKE_RESOURCE_TYPE_FAVICON
+	WKE_RESOURCE_TYPE_XHR
+	WKE_RESOURCE_TYPE_PING
+	WKE_RESOURCE_TYPE_SERVICE_WORKER
+	WKE_RESOURCE_TYPE_LAST_TYPE
+)
+
+type WkeWillSendRequestInfo struct {
+	URL              WkeString
+	NewURL           WkeString
+	ResourceType     WkeResourceType
+	HTTPResponseCode int
+	Method           WkeString
+	Referrer         WkeString
+	Headers          unsafe.Pointer // 使用unsafe.Pointer代替C中的void*
+}
+
+// 枚举类型
+type WkeHttBodyElementType int
+
+const (
+	WkeHttBodyElementTypeData WkeHttBodyElementType = iota
+	WkeHttBodyElementTypeFile
+)
+
+// wkeMemBuf 结构体
+type WkeMemBuf struct {
+	Unuse  int
+	Data   unsafe.Pointer // 使用unsafe.Pointer代替void*
+	Length uintptr        // 使用uintptr代替size_t（如果Length的值不会超过int的范围，也可以使用int）
+}
+
+// wkePostBodyElement 结构体
+type WkePostBodyElement struct {
+	Size       int
+	Type       WkeHttBodyElementType
+	Data       *WkeMemBuf // 假设WkeMemBuf是指针类型
+	FilePath   WkeString  // 使用uintptr代替C中的wkeString
+	FileStart  int64
+	FileLength int64 // -1 表示到文件末尾
+}
+
+// wkePostBodyElements 结构体（使用Go的切片）
+type WkePostBodyElements struct {
+	Size        int
+	Elements    []*WkePostBodyElement // 使用切片代替指针的指针和大小
+	ElementSize uintptr
+	IsDirty     bool
 }

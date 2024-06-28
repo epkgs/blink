@@ -26,6 +26,7 @@ type OnDidCreateScriptContextCallback func(frame WkeWebFrameHandle, context uint
 type OnWillReleaseScriptContextCallback func(frameId WkeWebFrameHandle, context uintptr, worldId int)
 type OnTitleChangedCallback func(title string)
 type OnDownloadCallback func(url string)
+type OnOtherLoadCallback func(loadType WkeOtherLoadType, info *WkeTempCallbackInfo)
 
 type bindEvent[T any] struct {
 	Callbacks map[string]T
@@ -44,7 +45,7 @@ type View struct {
 	mb     *Blink
 	parent *View
 
-	_didCreateScriptContext bool // 标记是否已经创建了脚本上下文 ( 部分页面在 document ready 后仍未创建好 script context )
+	_didCreateScriptContext bool // 标记是否已经创建了脚本上下文
 
 	_onDomEvent                         *bindEvent[OnDomEventCallback]
 	_onConsole                          *bindEvent[OnConsoleCallback]
@@ -57,6 +58,7 @@ type View struct {
 	_onDownload                         *bindEvent[OnDownloadCallback]
 	_onDidCreateScriptContext           *bindEvent[OnDidCreateScriptContextCallback]
 	_onWillReleaseScriptContextCallback *bindEvent[OnWillReleaseScriptContextCallback]
+	_onOtherLoad                        *bindEvent[OnOtherLoadCallback]
 }
 
 func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*View) *View {
@@ -83,6 +85,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 		_onDownload:                         newBindEvent[OnDownloadCallback](),
 		_onDidCreateScriptContext:           newBindEvent[OnDidCreateScriptContextCallback](),
 		_onWillReleaseScriptContextCallback: newBindEvent[OnWillReleaseScriptContextCallback](),
+		_onOtherLoad:                        newBindEvent[OnOtherLoadCallback](),
 	}
 
 	view.Window = newWindow(mb, view, windowType)
@@ -91,12 +94,12 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 	view.SetCookieJarFullPath(view.mb.Config.GetCookieFileABS())
 
 	view.registerFileSystem()
-	view.watchScriptContextState()
 
+	view.injectBootScripts()
+	view.watchScriptContextState()
 	view.bindDomEvents() // 绑定一些DOM事件
 
 	view.addToPool()
-	view.injectBootScripts()
 
 	// 添加默认下载操作
 	view.OnDownload(func(url string) {
@@ -708,13 +711,10 @@ func (v *View) OnDownload(callback OnDownloadCallback) (stop func()) {
 	}
 }
 
-func (v *View) GetMainWebFrame() (WkeWebFrameHandle, error) {
-	r1, _, err := v.mb.CallFunc("wkeWebFrameGetMainFrame", uintptr(v.Hwnd))
-	if err != nil {
-		return 0, err
-	}
+func (v *View) GetMainWebFrame() WkeWebFrameHandle {
+	r1, _, _ := v.mb.CallFunc("wkeWebFrameGetMainFrame", uintptr(v.Hwnd))
 
-	return WkeWebFrameHandle(r1), nil
+	return WkeWebFrameHandle(r1)
 }
 
 func mm2px(mm float64, dpi int) int {
@@ -735,10 +735,7 @@ type WithPrintSettings func(s *PrintSettings)
 
 // 保存主 WebFrame 的内容到 PDF
 func (v *View) SaveToPDF(writer io.Writer, withSetting ...WithPrintSettings) error {
-	frameId, err := v.GetMainWebFrame()
-	if err != nil {
-		return err
-	}
+	frameId := v.GetMainWebFrame()
 
 	return v.SaveWebFrameToPDF(frameId, writer, withSetting...)
 }
@@ -820,4 +817,24 @@ func (v *View) SetHeadlessEnabled(enable bool) *CallFuncJob {
 
 func (v *View) SetTransparent(transparent bool) {
 	v.mb.CallFunc("wkeSetTransparent", uintptr(v.Hwnd), BoolToPtr(transparent))
+}
+
+func (v *View) OnOtherLoad(callback OnOtherLoadCallback) (stop func()) {
+	v._onOtherLoad.Register.Do(func() {
+		var cb WkeOnOtherLoadCallback = func(webView WkeHandle, param uintptr, loadType WkeOtherLoadType, info *WkeTempCallbackInfo) (voidRes uintptr) {
+			for _, callback := range v._onOtherLoad.Callbacks {
+				callback(loadType, info)
+			}
+			return
+		}
+
+		v.mb.CallFunc("wkeOnOtherLoad", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+	})
+
+	key := utils.RandString(10)
+	v._onOtherLoad.Callbacks[key] = callback
+
+	return func() {
+		delete(v._onOtherLoad.Callbacks, key)
+	}
 }
