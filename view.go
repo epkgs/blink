@@ -93,10 +93,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 	view.registerFileSystem()
 	view.watchScriptContextState()
 
-	view.listenMinBtnClick()
-	view.listenMaxBtnClick()
-	view.listenCloseBtnClick()
-	view.listenCaptionDrag()
+	view.bindDomEvents() // 绑定一些DOM事件
 
 	view.addToPool()
 	view.injectBootScripts()
@@ -565,44 +562,44 @@ func (v *View) RemoveEventListener(selector, eventType string) {
 	delete(v._onDomEvent.Callbacks, key)
 }
 
-func (v *View) listenMinBtnClick() {
-	v.AddEventListener(".mb-btn-min", "click", func() {
+func (v *View) bindDomEvents() {
+	// 最小化按钮
+	v.AddEventListener(".__mb_min__", "click", func() {
 		v.Window.Minimize()
 	})
 
-}
-
-func (v *View) listenMaxBtnClick() {
-
-	preScript := `this.classList.toggle('maximized');`
-
-	v.AddEventListener(".mb-btn-max", "click", func() {
+	// 最大化按钮
+	v.AddEventListener(".__mb_max__", "click", func() {
 		if v.Window.IsMaximized() {
 			v.Window.Restore()
 		} else {
 			v.Window.Maximize()
 		}
-	}, preScript)
-}
+	}, `this.classList.toggle('__mb_maximized');`)
 
-func (v *View) listenCloseBtnClick() {
-	v.AddEventListener(".mb-btn-close", "click", func() {
+	// 关闭按钮
+	v.AddEventListener(".__mb_close__", "click", func() {
 		v.CloseWindow()
 	})
-}
 
-// 监听窗口拖动
-func (v *View) listenCaptionDrag() {
-
-	// 如果是在禁止拖动区域，则不监听
-	preScript := `if(e.target.closest('.mb-caption-nodrag')) return;`
-
-	v.AddEventListener(".mb-caption-drag", "mousedown", func() {
+	// 监听窗口拖动
+	v.AddEventListener(".__mb_drag__", "mousedown", func() {
 		if v.Window.IsMaximized() {
 			return
 		}
 		v.Window.EnableDragging()
-	}, preScript)
+	},
+		`if(e.target.closest('.__mb_nodrag__')) return;`, // 如果是在禁止拖动区域，则不监听
+	)
+
+	// 监听标题栏双击事件
+	v.AddEventListener(".__mb_caption__", "dblclick", func() {
+		if v.Window.IsMaximized() {
+			v.Window.Restore()
+		} else {
+			v.Window.Maximize()
+		}
+	})
 }
 
 func (v *View) OnConsole(callback OnConsoleCallback) (stop func()) {
