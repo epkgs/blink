@@ -146,7 +146,9 @@ func (v *View) injectBootScripts() {
 		script += s + ";\n"
 	}
 
-	v.RunJS(script)
+	v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
+		v.RunJS(script)
+	})
 }
 
 func (v *View) ShowWindow() {
@@ -400,30 +402,18 @@ func (v *View) DoWhenDidCreateScriptContext(callback func()) {
 }
 
 // 仅作用于 主frame，会自动判断是否 document ready
-func (v *View) RunJS(script string) {
-	v.DoWhenDocumentReady(func() {
-		v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
-	})
+func (v *View) RunJS(script string) JsValue {
+	r1, _, _ := v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
+
+	return JsValue(r1)
 }
 
 // 可指定 frame，会自动判断是否 document ready
-func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string, isInClosure bool) {
+func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string) JsValue {
 
-	if v.IsDocumentReady() {
-		v.mb.CallFunc("wkeRunJsByFrame", uintptr(frame), StringToPtr(script), BoolToPtr(isInClosure))
-		return
-	}
+	r1, _, _ := v.mb.CallFunc("wkeRunJsByFrame", uintptr(frame), StringToPtr(script), 0)
 
-	stop := func() {}
-	stop = v.OnDocumentReady(func(readyFrame WkeWebFrameHandle) {
-		if readyFrame != frame {
-			return
-		}
-
-		stop() // 执行完毕就停止，不重复执行
-
-		v.mb.CallFunc("wkeRunJsByFrame", uintptr(frame), StringToPtr(script), BoolToPtr(isInClosure))
-	})
+	return JsValue(r1)
 }
 
 func (v *View) RunJsFunc(funcName string, args ...interface{}) (result chan interface{}) {
@@ -566,42 +556,44 @@ func (v *View) RemoveEventListener(selector, eventType string) {
 }
 
 func (v *View) bindDomEvents() {
-	// 最小化按钮
-	v.AddEventListener(".__mb_min__", "click", func() {
-		v.Window.Minimize()
-	})
+	v.OnDocumentReady(func(frame WkeWebFrameHandle) {
+		// 最小化按钮
+		v.AddEventListener(".__mb_min__", "click", func() {
+			v.Window.Minimize()
+		})
 
-	// 最大化按钮
-	v.AddEventListener(".__mb_max__", "click", func() {
-		if v.Window.IsMaximized() {
-			v.Window.Restore()
-		} else {
-			v.Window.Maximize()
-		}
-	}, `this.classList.toggle('__mb_maximized');`)
+		// 最大化按钮
+		v.AddEventListener(".__mb_max__", "click", func() {
+			if v.Window.IsMaximized() {
+				v.Window.Restore()
+			} else {
+				v.Window.Maximize()
+			}
+		}, `this.classList.toggle('__mb_maximized');`)
 
-	// 关闭按钮
-	v.AddEventListener(".__mb_close__", "click", func() {
-		v.CloseWindow()
-	})
+		// 关闭按钮
+		v.AddEventListener(".__mb_close__", "click", func() {
+			v.CloseWindow()
+		})
 
-	// 监听窗口拖动
-	v.AddEventListener(".__mb_drag__", "mousedown", func() {
-		if v.Window.IsMaximized() {
-			return
-		}
-		v.Window.EnableDragging()
-	},
-		`if(e.target.closest('.__mb_nodrag__')) return;`, // 如果是在禁止拖动区域，则不监听
-	)
+		// 监听窗口拖动
+		v.AddEventListener(".__mb_drag__", "mousedown", func() {
+			if v.Window.IsMaximized() {
+				return
+			}
+			v.Window.EnableDragging()
+		},
+			`if(e.target.closest('.__mb_nodrag__')) return;`, // 如果是在禁止拖动区域，则不监听
+		)
 
-	// 监听标题栏双击事件
-	v.AddEventListener(".__mb_caption__", "dblclick", func() {
-		if v.Window.IsMaximized() {
-			v.Window.Restore()
-		} else {
-			v.Window.Maximize()
-		}
+		// 监听标题栏双击事件
+		v.AddEventListener(".__mb_caption__", "dblclick", func() {
+			if v.Window.IsMaximized() {
+				v.Window.Restore()
+			} else {
+				v.Window.Maximize()
+			}
+		})
 	})
 }
 
