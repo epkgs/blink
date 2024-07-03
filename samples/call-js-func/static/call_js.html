@@ -80,7 +80,7 @@
         </ul>
         <ol>
             <li>Go调用</li>
-            <li>view.RunJsFunc("func_1", "张三", 18)</li>
+            <li>view.CallJsFunc("func_1", "张三", 18)</li>
         </ol>
     </fieldset>
     <fieldset>
@@ -92,7 +92,7 @@
             <li>}</li>
         </ul>
         <ol>
-            <li>resp2 := view.RunJsFunc("func_2")</li>
+            <li>resp2 := view.CallJsFunc("func_2")</li>
             <li>result2 := (<-resp2).(string) // wait for result</li>
             <li>fmt.Printf("func_2 result is %s", result2)</li>
         </ol>
@@ -107,7 +107,7 @@
         </ul>
         <ol>
             <li>Go调用</li>
-            <li>resp3 := view.RunJsFunc("func_3")</li>
+            <li>resp3 := view.CallJsFunc("func_3")</li>
             <li>result3 := (<-resp3).(map[string]interface{}) // wait for result</li>
             <li>fmt.Printf("func_3 result is %v", result3)</li>
         </ol>

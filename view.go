@@ -416,9 +416,9 @@ func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string) JsValue {
 	return JsValue(r1)
 }
 
-func (v *View) RunJsFunc(funcName string, args ...interface{}) (result chan interface{}) {
+func (v *View) CallJsFunc(funcName string, args ...interface{}) (result chan interface{}) {
 
-	return v.mb.IPC.RunJSFunc(v, funcName, args...)
+	return v.mb.IPC.CallJsFunc(v, funcName, args...)
 }
 
 func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) (stop func()) {

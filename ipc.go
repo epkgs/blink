@@ -365,7 +365,7 @@ func (ipc *IPC) registerJSHandler() {
 	})
 }
 
-func (ipc *IPC) RunJSFunc(view *View, funcName string, args ...interface{}) chan interface{} {
+func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) chan interface{} {
 
 	newArgs := make([]interface{}, 0, len(args)+1)
 	newArgs = append(newArgs, funcName)
@@ -375,7 +375,7 @@ func (ipc *IPC) RunJSFunc(view *View, funcName string, args ...interface{}) chan
 
 	msg := IPCMessage{
 		ID:      id,
-		Channel: "runJSFunc",
+		Channel: "callJsFunc",
 		Args:    newArgs,
 	}
 
