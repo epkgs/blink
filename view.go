@@ -577,7 +577,7 @@ func (v *View) bindDomEvents() {
 		})
 
 		// 监听窗口拖动
-		v.AddEventListener(".__mb_drag__", "mousedown", func() {
+		v.AddEventListener(".__mb_drag__, .__mb_caption__", "mousedown", func() {
 			if v.Window.IsMaximized() {
 				return
 			}
