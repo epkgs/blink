@@ -37,16 +37,18 @@ type Job struct {
 	id             uint64
 	Url            *netUrl.URL
 	FileName       string
-	FileSize       int64
+	FileSize       uint64
 	isSupportRange bool
 	isFtp          bool
+
+	_lck *sync.Mutex // 用于确保写入文件的顺序
 }
 
 type Option struct {
 	Dir                  string        // 下载路径，如果为空则使用当前目录
 	FileNamePrefix       string        // 文件名前缀，默认空
 	MaxThreads           int           // 下载线程，默认4
-	MinChunkSize         int64         // 最小分块大小，默认500KB
+	MinChunkSize         uint64        // 最小分块大小，默认500KB
 	EnableSaveFileDialog bool          // 是否打开保存文件对话框，默认true
 	Overwrite            bool          // 是否覆盖已存在的文件，默认false
 	Timeout              time.Duration // 超时时间，默认10秒
@@ -193,11 +195,17 @@ func (job *Job) createTargetFile() (*os.File, error) {
 
 func (job *Job) AvaiableTreads() int {
 
-	if job.MinChunkSize <= 0 {
-		return job.MaxThreads
+	// 不支持多线程下载
+	if !job.isSupportRange {
+		return 1
 	}
 
 	if job.FileSize < job.MinChunkSize {
+		return 1
+	}
+
+	// 如果最小分块大小错误，则单线程下载
+	if job.MinChunkSize <= 0 {
 		return 1
 	}
 
@@ -317,43 +325,13 @@ func (job *Job) downloadHttp() error {
 		return errors.New("文件名不正确。")
 	}
 
-	if job.isSupportRange {
-		if err := job.multiThreadDownload(); err != nil {
-			job.logErr(err.Error())
-			return err
-		}
-	} else {
-		if err := job.singleThreadDownload(); err != nil {
-			job.logErr(err.Error())
-			return err
-		}
+	if err := job.multiThreadDownload(); err != nil {
+		job.logErr(err.Error())
+		return err
 	}
 
 	job.logDebug("下载完成：%s", job.TargetFile())
 	return nil
-}
-
-func (job *Job) singleThreadDownload() error {
-
-	job.logDebug("文件将以单进程模式下载。")
-
-	// 打开文件准备写入
-	file, err := job.createTargetFile()
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// 实现默认下载逻辑
-	// 使用http.Get或其他方式下载整个文件
-	resp, err := http.Get(job.Url.String())
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	_, err = io.Copy(file, resp.Body)
-	return err
 }
 
 func (job *Job) multiThreadDownload() error {
@@ -369,7 +347,6 @@ func (job *Job) multiThreadDownload() error {
 	defer file.Close()
 
 	var wg sync.WaitGroup
-	var mutex sync.Mutex // 用于确保写入文件的顺序
 	var ctx, cancel = context.WithCancel(context.Background())
 	var errs []error
 	var errLock sync.Mutex
@@ -377,10 +354,10 @@ func (job *Job) multiThreadDownload() error {
 	defer cancel() // 取消所有goroutine
 
 	// 计算每个线程的分块大小
-	chunkSize := int64(math.Ceil(float64(job.FileSize) / float64(theads)))
+	chunkSize := uint64(math.Ceil(float64(job.FileSize) / float64(theads)))
 
 	for i := 0; i < theads; i++ {
-		start := int64(i) * chunkSize
+		start := uint64(i) * chunkSize
 		end := start + chunkSize - 1
 
 		// 如果是最后一个部分，加上余数
@@ -401,7 +378,7 @@ func (job *Job) multiThreadDownload() error {
 					return
 				default:
 					// 尝试下载分块
-					err := job.downloadChunk(&mutex, file, start, end)
+					err := job.downloadChunk(file, start, end)
 
 					if err == nil {
 						job.logDebug("切片 %d 下载完成", index+1)
@@ -433,7 +410,7 @@ func (job *Job) multiThreadDownload() error {
 }
 
 // downloadChunk 下载文件的单个分块
-func (job *Job) downloadChunk(mutex *sync.Mutex, file *os.File, start, end int64) error {
+func (job *Job) downloadChunk(file *os.File, start, end uint64) error {
 
 	req, err := http.NewRequest("GET", job.Url.String(), nil)
 	if err != nil {
@@ -454,11 +431,11 @@ func (job *Job) downloadChunk(mutex *sync.Mutex, file *os.File, start, end int64
 	}
 
 	// 锁定互斥锁以安全地写入文件
-	mutex.Lock()
-	defer mutex.Unlock()
+	job._lck.Lock()
+	defer job._lck.Unlock()
 
 	// 写入文件的当前位置
-	if _, err = file.Seek(start, io.SeekStart); err != nil {
+	if _, err = file.Seek(int64(start), io.SeekStart); err != nil {
 		return err
 	}
 
@@ -491,7 +468,7 @@ func (job *Job) fetchInfo() error {
 
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
 	// 获取文件总大小
-	contentLength, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
+	contentLength, err := strconv.ParseUint(r.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
 		job.isSupportRange = false
 		job.FileSize = 0
