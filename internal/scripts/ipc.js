@@ -56,7 +56,7 @@
         }
         return randomString;
     }
-    function newMsg({ id = randStr(), replyId = '', channel = '', args = [], result = null, error = '' }) {
+    function newMsg({ id = '', replyId = '', channel = '', args = [], result = null, error = '' }) {
         return { id, replyId, channel, args, result, error }
     }
 
@@ -98,7 +98,7 @@
 
     // invoke 调用, 有返回值
     function invoke(channel, ...args) {
-        const msg = newMsg({ channel, args });
+        const msg = newMsg({ id: randStr(), channel, args });
         return withTimeout(new Promise((resolve, reject) => {
             mb.replyWaiting[msg.id] = { resolve, reject }
             toGO(msg)
@@ -109,7 +109,7 @@
 
     // sent 调用，没有返回值
     function sent(channel, ...args) {
-        const msg = newMsg({ id: '', channel, args });
+        const msg = newMsg({ channel, args });
         toGO(msg)
     }
 

@@ -41,8 +41,8 @@ type IPCMessage struct {
 	ReplyId string        `json:"replyId"` // 回复ID
 	Channel string        `json:"channel"` // 通道
 	Args    []interface{} `json:"args"`    // 参数
-	Error   string        `json:"error"`   // 是否错误，当有回复ID时，此字段有效
 	Result  interface{}   `json:"result"`  // 返回值，当有回复ID时，此字段有效
+	Error   string        `json:"error"`   // 是否错误，当有回复ID时，此字段有效
 }
 
 func newIPC(mb *Blink) *IPC {
@@ -266,7 +266,7 @@ func (ipc *IPC) invokeByJS(view *View, msg *IPCMessage) {
 	}
 
 	replyMsg := IPCMessage{
-		ID:      utils.RandString(8),
+		ID:      "",
 		ReplyId: msg.ID,
 		Error:   e,
 		Result:  result,
