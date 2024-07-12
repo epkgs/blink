@@ -34,8 +34,10 @@ func main() {
 		os.Exit(0)
 	})
 
-	view.AddEventListener(".custom-zone", "mouseover", func() {
-		fmt.Printf("custom zone hover\n")
+	view.OnDocumentReady(func(frame blink.WkeWebFrameHandle) {
+		view.AddEventListener(".custom-zone", "mouseover", func() {
+			fmt.Printf("custom zone hover\n")
+		})
 	})
 
 	app.KeepRunning()
