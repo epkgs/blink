@@ -1,0 +1,44 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <meta charset="utf-8" />
+    <title>demo</title>
+</head>
+
+<body style="background-color: #fff;">
+    <div class="dropzone" style="clear: both;height: 300px; background-color: #ccc;">
+        将文件拖拽到此处
+    </div>
+
+    <script>
+
+        let zone = document.querySelectorAll('.dropzone');
+
+        for (let i = 0; i < zone.length; i++) {
+            let z = zone[i];
+            z.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                // console.log("dropzone zone hover")
+            })
+
+            z.addEventListener('drop', function (e) {
+                e.preventDefault();
+                for (var i = 0; i < e.dataTransfer.items.length; i++) {
+                    var item = e.dataTransfer.items[i];
+
+                    if (item.kind === 'file') {
+                        var file = item.getAsFile();
+                        var fileURL = URL.createObjectURL(file);
+
+                        alert('File name: ' + file.name + ', File size: ' + file.size + ', File URL: ' + fileURL)
+                    }
+                }
+            })
+        }
+
+    </script>
+</body>
+
+</html>
