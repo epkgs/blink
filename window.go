@@ -110,6 +110,15 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 		window.EnableBorderResize(true)
 	}
 
+	// 监听尺寸大小变化，修改 isMaximized 状态
+	window.OnSize(func(stype SIZE_TYPE, width, height uint16) {
+		if stype == SIZE_MAXIMIZED {
+			window.isMaximized = true
+		} else if stype == SIZE_RESTORED || stype == SIZE_MINIMIZED {
+			window.isMaximized = false
+		}
+	})
+
 	return window
 }
 
@@ -125,13 +134,15 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			// 修正无边框窗口，最大化时的尺寸问题，避免遮挡任务栏
 			if w.isMaximized {
 				if w.windowType == WKE_WINDOW_TYPE_TRANSPARENT || w.windowType == WKE_WINDOW_TYPE_HIDE_CAPTION {
+					// 获取窗口所在屏幕的句柄
 					hMonitor := win.MonitorFromWindow(win.HWND(w.Hwnd), win.MONITOR_DEFAULTTONEAREST)
+
+					// 获取屏幕工作区尺寸
 					var monitorInfo win.MONITORINFO
 					monitorInfo.CbSize = uint32(unsafe.Sizeof(monitorInfo))
 					win.GetMonitorInfo(hMonitor, &monitorInfo)
 
-					log.Debug("monitorInfo: %v", monitorInfo)
-
+					// 根据屏幕工作区大小，设置窗口尺寸
 					lpmmi.PtMaxPosition.X = monitorInfo.RcWork.Left
 					lpmmi.PtMaxPosition.Y = monitorInfo.RcWork.Top
 					lpmmi.PtMaxSize.X = monitorInfo.RcWork.Right - monitorInfo.RcWork.Left
