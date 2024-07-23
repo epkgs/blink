@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"github.com/epkgs/blink/internal/log"
@@ -16,7 +15,7 @@ import (
 	"github.com/lxn/win"
 )
 
-type WM_SIZING uint16
+type WM_SIZING uintptr
 
 const (
 	WMSZ_LEFT        WM_SIZING = 1 // 左边缘
@@ -27,6 +26,16 @@ const (
 	WMSZ_BOTTOM      WM_SIZING = 6 // 下边缘
 	WMSZ_BOTTOMLEFT  WM_SIZING = 7 // 左下角
 	WMSZ_BOTTOMRIGHT WM_SIZING = 8 // 右下角
+)
+
+type SIZE_TYPE uintptr
+
+const (
+	SIZE_RESTORED SIZE_TYPE = iota
+	SIZE_MINIMIZED
+	SIZE_MAXIMIZED
+	SIZE_MAXSHOW
+	SIZE_MAXHIDE
 )
 
 const (
@@ -43,7 +52,8 @@ var (
 	appendMenu = user32.NewProc("AppendMenuW")
 )
 
-type WindowOnResizeCallback func(*win.RECT)
+type WindowOnSizingCallback func(WM_SIZING, *win.RECT)
+type WindowOnSizeCallback func(stype SIZE_TYPE, width, height uint16)
 type WindowOnCreateCallback func(*win.CREATESTRUCT)
 type WindowOnActivateAppCallback func(bool, uintptr)
 
@@ -68,7 +78,8 @@ type Window struct {
 	nid               win.NOTIFYICONDATA
 	useSimpleTrayMenu bool
 
-	_onResize      *bindEvent[WindowOnResizeCallback]
+	_onSizing      *bindEvent[WindowOnSizingCallback]
+	_onSize        *bindEvent[WindowOnSizeCallback]
 	_onCreate      *bindEvent[WindowOnCreateCallback]
 	_onActivateApp *bindEvent[WindowOnActivateAppCallback]
 }
@@ -80,7 +91,8 @@ func newWindow(mb *Blink, view *View, windowType WkeWindowType) *Window {
 		windowType: windowType,
 		Hwnd:       view.GetWindowHandle(),
 
-		_onResize:      newBindEvent[WindowOnResizeCallback](),
+		_onSizing:      newBindEvent[WindowOnSizingCallback](),
+		_onSize:        newBindEvent[WindowOnSizeCallback](),
 		_onCreate:      newBindEvent[WindowOnCreateCallback](),
 		_onActivateApp: newBindEvent[WindowOnActivateAppCallback](),
 	}
@@ -126,19 +138,6 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 					lpmmi.PtMaxSize.Y = monitorInfo.RcWork.Bottom - monitorInfo.RcWork.Top
 				}
 			}
-
-			go func() {
-				// 延时更新，等待已处理消息。（等待上面的尺寸修改生效）
-				time.Sleep(10 * time.Millisecond)
-
-				rect := win.RECT{}
-
-				win.GetWindowRect(win.HWND(w.Hwnd), &rect)
-
-				for _, cb := range w._onResize.Callbacks {
-					cb(&rect)
-				}
-			}()
 
 		case WM_TRAYNOTIFY:
 
@@ -194,10 +193,21 @@ func (w *Window) hookWindowProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			}
 
 		case win.WM_SIZING:
+
+			pos := (WM_SIZING)(wparam)
+
 			rect := (*win.RECT)(unsafe.Pointer(lparam))
 
-			for _, cb := range w._onResize.Callbacks {
-				cb(rect)
+			for _, cb := range w._onSizing.Callbacks {
+				cb(pos, rect)
+			}
+
+		case win.WM_SIZE:
+			stype := (SIZE_TYPE)(wparam)
+			width := LOWORD(uint32(lparam))
+			height := HIWORD(uint32(lparam))
+			for _, cb := range w._onSize.Callbacks {
+				cb(stype, width, height)
 			}
 
 		case win.WM_CREATE:
@@ -562,17 +572,35 @@ func (w *Window) ShowCaption() {
 }
 
 // 修改窗口大小
-func (w *Window) Resize(x, y, width, height int32) {
+func (w *Window) SetWindowPos(x, y, width, height int32) {
 	win.SetWindowPos(win.HWND(w.Hwnd), 0, x, y, width, height, win.SWP_NOZORDER|win.SWP_NOACTIVATE)
 }
 
-// Resize 事件
-func (w *Window) OnResize(callback WindowOnResizeCallback) (stop func()) {
+func (w *Window) Resize(width, height int32) {
+	win.SetWindowPos(win.HWND(w.Hwnd), 0, 0, 0, width, height, win.SWP_NOMOVE|win.SWP_NOZORDER|win.SWP_NOACTIVATE)
+}
+
+func (w *Window) Move(x, y int32) {
+	win.SetWindowPos(win.HWND(w.Hwnd), 0, x, y, 0, 0, win.SWP_NOSIZE|win.SWP_NOZORDER|win.SWP_NOACTIVATE)
+}
+
+// Sizing 事件
+func (w *Window) OnSizing(callback WindowOnSizingCallback) (stop func()) {
 	key := utils.RandString(6)
-	w._onResize.Callbacks[key] = callback
+	w._onSizing.Callbacks[key] = callback
 
 	return func() {
-		delete(w._onResize.Callbacks, key)
+		delete(w._onSizing.Callbacks, key)
+	}
+}
+
+// Size 事件
+func (w *Window) OnSize(callback WindowOnSizeCallback) (stop func()) {
+	key := utils.RandString(6)
+	w._onSize.Callbacks[key] = callback
+
+	return func() {
+		delete(w._onSize.Callbacks, key)
 	}
 }
 

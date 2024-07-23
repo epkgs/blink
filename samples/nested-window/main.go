@@ -5,7 +5,6 @@ import (
 	"io/fs"
 
 	blink "github.com/epkgs/blink"
-	"github.com/lxn/win"
 )
 
 //go:embed web
@@ -30,12 +29,8 @@ func main() {
 		blink.WithWebWindowPos(2, 29),
 	)
 
-	parent.Window.OnResize(func(r *win.RECT) {
-		width := r.Right - r.Left - 4
-		height := r.Bottom - r.Top - 29 - 2
-
-		// child 的 x, y 坐标是相对于 parent 的
-		child.Window.Resize(2, 29, width, height)
+	parent.Window.OnSize(func(stype blink.SIZE_TYPE, width, height uint16) {
+		child.Window.Resize(int32(width-4), int32(height-29-2))
 	})
 
 	parent.LoadURL("http://local/index.html")

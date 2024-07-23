@@ -167,6 +167,10 @@ func LOWORD(dwValue uint32) uint16 {
 	return uint16(dwValue & 0xFFFF)
 }
 
+func HIWORD(dwValue uint32) uint16 {
+	return uint16((dwValue >> 16) & 0xFFFF)
+}
+
 func CopyString(src uintptr, n int) string {
 	return string(CopyBytes(src, n))
 }
