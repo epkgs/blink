@@ -493,7 +493,7 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 			e.preventDefault();
 		
 			const ipc = window.top[JS_IPC]
-			ipc.sent('addEventListener', VIEW_HANDLE, selector, eventType)
+			ipc.sent('domEvent', VIEW_HANDLE, selector, eventType)
 		};
 		
 		for (let i = 0; i < els.length; i++) {
@@ -514,7 +514,7 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 	)
 
 	v._onDomEvent.Register.Do(func() {
-		v.mb.IPC.Handle("addEventListener", func(hwndStr, selector, eventType string) {
+		v.mb.IPC.Handle("domEvent", func(hwndStr, selector, eventType string) {
 			hwnd, err := strconv.ParseUint(hwndStr, 10, 64)
 			if err != nil {
 				log.Error("hwnd 转换失败：%s", err.Error())
