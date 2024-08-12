@@ -100,7 +100,7 @@ func (ipc *IPC) Sent(channel string, args ...interface{}) error {
 
 // GO 注册 Handler
 //
-// handler 必须为函数，如有返回值，第一个返回值
+// handler 必须为函数，如有返回值，第一个返回值为正常返回值（可省略），第二个返回值为错误（可省略）
 func (ipc *IPC) Handle(channel string, handler Callback) {
 
 	// 使用反射获取处理函数的类型
