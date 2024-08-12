@@ -237,10 +237,16 @@ func (job *Job) Download() error {
 
 func (job *Job) downloadFtp() error {
 
-	c, err := ftp.Dial(job.Url.Host+job.Url.Port(), ftp.DialWithTimeout(5*time.Second))
+	ftpHost := job.Url.Host
+
+	if job.Url.Port() == "" {
+		ftpHost += ":21"
+	}
+
+	c, err := ftp.Dial(ftpHost, ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
-		job.logErr("打开 FTP 出错：" + err.Error())
-		return errors.New("链接 FTP 服务器出错")
+		job.logErr(err.Error())
+		return err
 	}
 
 	username := job.Url.User.Username()
@@ -253,8 +259,8 @@ func (job *Job) downloadFtp() error {
 	err = c.Login(username, password)
 	defer c.Quit()
 	if err != nil {
-		job.logErr("登录 FTP 出错：" + err.Error())
-		return errors.New("登录 FTP 出错")
+		job.logErr(err.Error())
+		return err
 	}
 
 	if job.EnableSaveFileDialog {
@@ -271,8 +277,7 @@ func (job *Job) downloadFtp() error {
 	}
 
 	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
-		job.logDebug("文件名不正确: %s", job.FileName)
-		return errors.New("文件名不正确。")
+		return fmt.Errorf("文件名不正确: %s", job.FileName)
 	}
 
 	job.logDebug("创建任务 %s", job.Url.String())
