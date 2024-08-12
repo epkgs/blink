@@ -11,6 +11,7 @@ import (
 	"github.com/epkgs/blink/internal/cast"
 	"github.com/epkgs/blink/internal/log"
 	"github.com/epkgs/blink/internal/utils"
+	"github.com/epkgs/blink/pkg/async"
 )
 
 const (
@@ -33,7 +34,7 @@ type IPC struct {
 
 	handlers map[string]ipcHandler
 
-	resultWaiting map[string]chan interface{}
+	resultWaiting map[string]resultCallback
 }
 
 type IPCMessage struct {
@@ -50,7 +51,7 @@ func newIPC(mb *Blink) *IPC {
 		mb: mb,
 
 		handlers:      make(map[string]ipcHandler),
-		resultWaiting: make(map[string]chan interface{}),
+		resultWaiting: make(map[string]resultCallback),
 	}
 
 	ipc.registerBootScript()
@@ -187,7 +188,7 @@ func (ipc *IPC) HasChannel(channel string) (exist bool) {
 	return
 }
 
-//go:embed internal/scripts/ipc.js
+//go:embed ipc.js
 var ipcjs []byte
 
 func (ipc *IPC) registerBootScript() {
@@ -269,17 +270,17 @@ func (ipc *IPC) handleJSReply(msg *IPCMessage) {
 		return
 	}
 
-	resultChan, exist := ipc.resultWaiting[msg.ReplyId]
+	cb, exist := ipc.resultWaiting[msg.ReplyId]
 	if !exist {
 		return
 	}
 
-	defer delete(ipc.resultWaiting, msg.ReplyId) // 接收到消息就从 map 中删除
+	delete(ipc.resultWaiting, msg.ReplyId) // 接收到消息就从 map 中删除
 
 	if msg.Error != "" {
-		resultChan <- errors.New(msg.Error)
+		cb(nil, errors.New(msg.Error))
 	} else {
-		resultChan <- msg.Result
+		cb(msg.Result, nil)
 	}
 }
 
@@ -317,38 +318,27 @@ func (ipc *IPC) registerJSHandler() {
 				Args:    args,
 			}
 
-			resultChan := make(chan interface{}) // result 管道
-
-			ipc.resultWaiting[id] = resultChan // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
+			ipc.resultWaiting[id] = cb // 暂存 result callback
 
 			sentMsgToView(view, msg)
 
-			// 异步等待 JS 返回值，异步处理 JS 消息时，此处阻塞，导致无法执行任务队列，导致阻塞死循环
+			// 删除等待结果的callback
 			go func() {
-				defer close(resultChan) // 关闭 result
+				defer delete(ipc.resultWaiting, id) // 删除等待结果的callback
 
-				select {
-				case result := <-resultChan:
-					switch result.(type) {
-					case error: // 错误
-						go cb(nil, result.(error))
-					default: // 正常返回值
-						go cb(result, nil)
-					}
-					return
-				case <-time.After(10 * time.Second): // 10秒等待超时
-					defer delete(ipc.resultWaiting, id) // 删除 result
-					go cb(nil, errors.New("等待 IPC JS Handler 处理结果超时"))
+				time.Sleep(10 * time.Second)
+				cb, exist := ipc.resultWaiting[id]
+				if !exist {
 					return
 				}
-			}()
 
-			return
+				cb(nil, errors.New("等待 JS Handler 处理结果超时"))
+			}()
 		}
 	})
 }
 
-func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) chan interface{} {
+func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) async.InProgress[interface{}] {
 
 	newArgs := make([]interface{}, 0, len(args)+1)
 	newArgs = append(newArgs, funcName)
@@ -362,13 +352,21 @@ func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) cha
 		Args:    newArgs,
 	}
 
-	resultChan := make(chan interface{}, 1) // result 管道
+	resultChan := make(chan interface{}) // result 管道
+	errChan := make(chan error)          // 错误管道
 
-	ipc.resultWaiting[id] = resultChan // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
+	progress := async.New(10*time.Second, func() (interface{}, error) {
+		return <-resultChan, <-errChan
+	}).Start()
+
+	ipc.resultWaiting[id] = func(result interface{}, err error) {
+		resultChan <- result
+		errChan <- err
+	}
 
 	sentMsgToView(view, msg)
 
-	return resultChan
+	return progress
 }
 
 func sentMsgToView(view *View, msg IPCMessage) {

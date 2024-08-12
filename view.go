@@ -13,6 +13,7 @@ import (
 
 	"github.com/epkgs/blink/internal/log"
 	"github.com/epkgs/blink/internal/utils"
+	"github.com/epkgs/blink/pkg/async"
 )
 
 type OnDomEventCallback func()
@@ -416,7 +417,7 @@ func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string) JsValue {
 	return JsValue(r1)
 }
 
-func (v *View) CallJsFunc(funcName string, args ...interface{}) (result chan interface{}) {
+func (v *View) CallJsFunc(funcName string, args ...interface{}) async.InProgress[interface{}] {
 
 	return v.mb.IPC.CallJsFunc(v, funcName, args...)
 }
