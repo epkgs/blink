@@ -101,10 +101,10 @@ func New(withOption ...func(*Option)) *Downloader {
 	return downloader
 }
 
-func (d *Downloader) Download(url string, withOption ...func(*Option)) error {
+func (d *Downloader) Download(url string, withOption ...func(*Option)) (string, error) {
 	job, err := d.NewJob(url, withOption...)
 	if err != nil {
-		return err
+		return "", err
 	}
 	return job.Download()
 }
@@ -222,16 +222,22 @@ func (job *Job) AvaiableTreads() int {
 	return threads
 }
 
-func (job *Job) Download() error {
+func (job *Job) Download() (string, error) {
 	select {
 	case <-time.After(job.Timeout):
-		return errors.New("下载超时")
+		return "", errors.New("下载超时")
 	default:
+		var err error
 		if job.isFtp {
-			return job.downloadFtp()
+			err = job.downloadFtp()
+		} else {
+			err = job.downloadHttp()
 		}
 
-		return job.downloadHttp()
+		if err != nil {
+			return "", err
+		}
+		return job.TargetFile(), nil
 	}
 }
 
