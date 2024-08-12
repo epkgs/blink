@@ -17,21 +17,21 @@
         let gId = 0
 
         //调用Go中监听的事件
-        function goOnEventDemo() {
+        function goEvent() {
             clearMessage()
             //参数传递,从下标0开始表示第1个参数
-            ipc.sent('go-on-event-demo', '传递的数据 ' + gId)
+            ipc.sent('go-event', '传递的数据 ' + gId)
         }
 
         //带有返回值的事件
-        async function goOnEventDemoReturn() {
+        async function goEventReturn() {
             clearMessage()
             //参数传递,从下标0开始表示第1个参数
             var strData = ""
             for (var i = 0; i < 10; i++) {
                 strData += "[" + i + "]";
             }
-            const data = await ipc.invoke('go-on-event-demo-return', '传递的数据:' + strData, 99999, false, 9999.999, "这是第五个参数");
+            const data = await ipc.invoke('go-event-return', '传递的数据:' + strData, 99999, false, 9999.999, "这是第五个参数");
 
             writeMessage("data-length: " + data.length)
             writeMessage("data: " + data)
@@ -40,16 +40,24 @@
         // 在Go中监听一个事件, 不带返回值
         // 使用形参接收参数
         // 在JS中入参类型必须相同
-        function goOnEventDemoArgument() {
-            ipc.sent('go-on-event-demo-argument', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
+        function goEventArgument() {
+            ipc.sent('go-event-argument', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
         }
 
         // 在Go中监听一个事件, 带返回值
         // 使用形参接收参数
         // 在JS中入参类型必须相同
-        async function goOnEventDemoArgumentReturn() {
-            const result = await ipc.invoke('go-on-event-demo-argument-return', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
+        async function goEventArgumentReturn() {
+            const result = await ipc.invoke('go-event-argument-return', 100 + gId, '字符串-mini-blink' + gId, 1000.001 + gId, true, "字符串" + gId);
             writeMessage("result: " + result)
+        }
+
+        function goEventWithError(){
+            ipc.invoke('go-event-with-error').then(res=>{
+                writeMessage("result:" + JSON.stringify(res))
+            }).catch(err=>{
+                writeMessage("err:" + err)
+            })
         }
 
 
@@ -59,9 +67,9 @@
             if (intval == null) {
                 // cef ipc 不要 for {} 无间隔的调用
                 intval = setInterval(function () {
-                    goOnEventDemo()
-                    goOnEventDemoArgument()
-                    goOnEventDemoArgumentReturn()
+                    goEvent()
+                    goEventArgument()
+                    goEventArgumentReturn()
                     gId++
                 })
             } else {
@@ -74,10 +82,11 @@
 
 <body style="margin: 0px;padding: 0px;">
     Go中监听事件，JS中调用<br>
-    <button onclick="goOnEventDemo()">go-on-event-demo</button>
-    <button onclick="goOnEventDemoReturn()">go-on-event-demo-return</button>
-    <button onclick="goOnEventDemoArgument()">go-on-event-demo-argument</button>
-    <button onclick="goOnEventDemoArgumentReturn()">go-on-event-demo-argument-return</button>
+    <button onclick="goEvent()">go-event</button>
+    <button onclick="goEventReturn()">go-event-return</button>
+    <button onclick="goEventArgument()">go-event-argument</button>
+    <button onclick="goEventArgumentReturn()">go-event-argument-return</button>
+    <button onclick="goEventWithError()">go-event-with-error</button>
     <br>
     <button onclick="autoEmit()">autoEmit</button>
     <div id="message"></div>

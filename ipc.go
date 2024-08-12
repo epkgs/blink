@@ -23,10 +23,10 @@ const (
 
 type Callback interface{}
 
-type resultCallback func(result interface{})
+type resultCallback func(result interface{}, err error)
 
 // resultCallback 用于区分无须返回值的情况
-type ipcHandler func(cb resultCallback, args ...interface{}) error
+type ipcHandler func(cb resultCallback, args ...interface{})
 
 type IPC struct {
 	mb *Blink
@@ -73,18 +73,16 @@ func (ipc *IPC) Invoke(channel string, args ...interface{}) (interface{}, error)
 		return nil, errors.New(msg)
 	}
 
-	result := make(chan interface{}, 1)
+	result := make(chan interface{})
+	err := make(chan error)
 
 	// 将 callback 转 chan
-	err := handler(func(res interface{}) {
+	handler(func(res interface{}, e error) {
 		result <- res
+		err <- e
 	}, args...)
 
-	if err != nil {
-		return nil, err
-	}
-
-	return <-result, nil
+	return <-result, <-err
 }
 
 func (ipc *IPC) Sent(channel string, args ...interface{}) error {
@@ -95,37 +93,25 @@ func (ipc *IPC) Sent(channel string, args ...interface{}) error {
 		return errors.New(msg)
 	}
 
-	err := handler(nil, args...)
-	if err != nil {
-		return err
-	}
+	handler(nil, args...)
 
 	return nil
 }
 
 // GO 注册 Handler
-func (ipc *IPC) Handle(channel string, handler Callback) error {
+//
+// handler 必须为函数，如有返回值，第一个返回值
+func (ipc *IPC) Handle(channel string, handler Callback) {
 
 	// 使用反射获取处理函数的类型
 	handlerVal := reflect.ValueOf(handler)
 	if handlerVal.Kind() != reflect.Func {
-		return errors.New("handler must be a function")
+		panic(fmt.Sprintf("channel %s, handler must be a function", channel))
 	}
 
 	handlerType := handlerVal.Type()
 
-	ipc.handlers[channel] = func(cb resultCallback, inputs ...interface{}) (err error) {
-
-		defer func() {
-			if r := recover(); r != nil {
-				switch e := r.(type) {
-				case error:
-					err = e
-				default:
-					err = fmt.Errorf("从 panic 中恢复 %s 的 handler， err: %v", channel, r)
-				}
-			}
-		}()
+	ipc.handlers[channel] = func(cb resultCallback, inputs ...interface{}) {
 
 		inputSize := len(inputs)
 
@@ -141,10 +127,12 @@ func (ipc *IPC) Handle(channel string, handler Callback) error {
 			param := handlerType.In(i)
 
 			var inputVal reflect.Value
+			var err error
 
 			if i < inputSize {
 				inputVal, err = cast.Param(param, inputs[i])
 				if err != nil {
+					cb(nil, err)
 					return
 				}
 			} else {
@@ -160,9 +148,9 @@ func (ipc *IPC) Handle(channel string, handler Callback) error {
 			inputSize := len(inputs)
 			elem := handlerType.In(handlerType.NumIn() - 1).Elem()
 			for i := 0; i < inputSize; i++ {
-				var inputVal reflect.Value
-				inputVal, err = cast.Param(elem, inputs[i])
+				inputVal, err := cast.Param(elem, inputs[i])
 				if err != nil {
+					cb(nil, err)
 					log.Error(err.Error())
 					return
 				}
@@ -180,17 +168,18 @@ func (ipc *IPC) Handle(channel string, handler Callback) error {
 		// 处理返回值
 		if len(out) == 0 {
 			// 没有返回值
-			go cb(nil)
+			go cb(nil, nil)
 		} else if len(out) == 1 {
 			// 只有一个返回值
-			go cb(out[0].Interface())
+			go cb(out[0].Interface(), nil)
+		} else if len(out) == 2 {
+			// 有2个返回值
+			go cb(out[0].Interface(), out[1].Interface().(error))
 		} else {
 			// 多个返回值
-			return fmt.Errorf("multiple return values are not supported")
+			go cb(nil, fmt.Errorf("multiple return values are not supported"))
 		}
-		return
 	}
-	return nil
 }
 
 func (ipc *IPC) HasChannel(channel string) (exist bool) {
@@ -308,18 +297,7 @@ func (ipc *IPC) registerJSHandler() {
 		}
 
 		// 将 JS handler 转为 GO handler
-		ipc.handlers[channel] = func(cb resultCallback, args ...interface{}) (err error) {
-
-			defer func() {
-				if r := recover(); r != nil {
-					switch e := r.(type) {
-					case error:
-						err = e
-					default:
-						err = fmt.Errorf("从 panic 中恢复 %s 的 handler， err: %v", channel, r)
-					}
-				}
-			}()
+		ipc.handlers[channel] = func(cb resultCallback, args ...interface{}) {
 
 			if cb == nil {
 				msg := IPCMessage{
@@ -339,7 +317,7 @@ func (ipc *IPC) registerJSHandler() {
 				Args:    args,
 			}
 
-			resultChan := make(chan interface{}, 1) // result 管道
+			resultChan := make(chan interface{}) // result 管道
 
 			ipc.resultWaiting[id] = resultChan // 暂存 result channel, 等待 JS 完毕后，通过 JS_HANDLE_PROCESS_REPLY 将结果塞进来
 
@@ -351,11 +329,16 @@ func (ipc *IPC) registerJSHandler() {
 
 				select {
 				case result := <-resultChan:
-					go cb(result)
+					switch result.(type) {
+					case error: // 错误
+						go cb(nil, result.(error))
+					default: // 正常返回值
+						go cb(result, nil)
+					}
 					return
 				case <-time.After(10 * time.Second): // 10秒等待超时
 					defer delete(ipc.resultWaiting, id) // 删除 result
-					err = errors.New("等待 IPC JS Handler 处理结果超时")
+					go cb(nil, errors.New("等待 IPC JS Handler 处理结果超时"))
 					return
 				}
 			}()

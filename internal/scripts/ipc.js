@@ -22,6 +22,17 @@
     ipc.sent = sent;
     ipc.handle = handle;
 
+    class IPCError {
+        constructor(msg) {
+            this.name = 'IPC Error';
+            this.message = msg;
+        }
+
+        toString() {
+            return this.message;
+        }
+    }
+
     // GO 调用 (JS预留函数)
     window.top[JS_GO2JS] = (msgTxt) => {
         const msg = JSON.parse(msgTxt);
@@ -75,7 +86,7 @@
         const p = mb.replyWaiting[msg.replyId]
         if (!p) return;
         if (msg.error) {
-            p.reject(new Error(msg.error))
+            p.reject(new IPCError(msg.error))
             return;
         }
         p.resolve(msg.result)
