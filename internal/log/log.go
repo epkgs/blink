@@ -1,5 +1,15 @@
 package log
 
+import "fmt"
+
+func log(format string, vars ...interface{}) {
+	fmt.Printf(format+"\n", vars...)
+}
+
+func Debug(format string, vars ...interface{}) {
+	log("[GO-BLINK DEBUG] "+format, vars...)
+}
+
 func Info(format string, vars ...interface{}) {
 	log("[GO-BLINK INFO] "+format, vars...)
 }
