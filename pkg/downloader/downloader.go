@@ -40,6 +40,7 @@ type Job struct {
 	FileSize       uint64
 	isSupportRange bool
 	isFtp          bool
+	ticker         *time.Ticker
 
 	_lck *sync.Mutex // 用于确保写入文件的顺序
 }
@@ -49,7 +50,7 @@ type Option struct {
 	FileNamePrefix       string        // 文件名前缀，默认空
 	MaxThreads           int           // 下载线程，默认4
 	MinChunkSize         uint64        // 最小分块大小，默认500KB
-	EnableSaveFileDialog bool          // 是否打开保存文件对话框，默认true
+	EnableSaveFileDialog bool          // 是否打开保存文件对话框，默认false
 	Overwrite            bool          // 是否覆盖已存在的文件，默认false
 	Timeout              time.Duration // 超时时间，默认10秒
 }
@@ -81,7 +82,7 @@ func New(withOption ...func(*Option)) *Downloader {
 		FileNamePrefix:       "",
 		MaxThreads:           4,
 		MinChunkSize:         500 * 1024, // 500KB
-		EnableSaveFileDialog: true,
+		EnableSaveFileDialog: false,
 		Overwrite:            false,
 		Timeout:              10 * time.Second,
 	}
@@ -111,6 +112,8 @@ func (d *Downloader) Download(url string, withOption ...func(*Option)) (string, 
 
 func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, error) {
 
+	log.Debug("创建下载任务：%s", url)
+
 	Url, err := netUrl.Parse(url)
 	if err != nil {
 		return nil, err
@@ -130,10 +133,11 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 
 		id:             d.lastJobId,
 		Url:            Url,
-		FileName:       "",
+		FileName:       filepath.Base(Url.Path),
 		FileSize:       0,
 		isSupportRange: false,
 		isFtp:          Url.Scheme == "ftp",
+		ticker:         time.NewTicker(opt.Timeout),
 	}
 
 	d.afterCreateJobInterceptor(job)
@@ -224,20 +228,27 @@ func (job *Job) AvaiableTreads() int {
 
 func (job *Job) Download() (string, error) {
 	select {
-	case <-time.After(job.Timeout):
+	case <-job.ticker.C:
 		return "", errors.New("下载超时")
 	default:
 		var err error
 		if job.isFtp {
+			job.logDebug("下载FTP文件")
 			err = job.downloadFtp()
 		} else {
+			job.logDebug("下载HTTP文件")
 			err = job.downloadHttp()
 		}
 
 		if err != nil {
 			return "", err
 		}
-		return job.TargetFile(), nil
+
+		targetFile := job.TargetFile()
+
+		job.logDebug("下载完成， 文件路径：%s", targetFile)
+
+		return targetFile, nil
 	}
 }
 
@@ -251,9 +262,12 @@ func (job *Job) downloadFtp() error {
 
 	c, err := ftp.Dial(ftpHost, ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
-		job.logErr(err.Error())
-		return err
+		newErr := errors.New("FTP 链接出错：" + err.Error())
+		job.logErr(newErr.Error())
+		return newErr
 	}
+
+	job.logDebug("链接 %s 成功，准备登录...", ftpHost)
 
 	username := job.Url.User.Username()
 	password, _ := job.Url.User.Password()
@@ -265,11 +279,15 @@ func (job *Job) downloadFtp() error {
 	err = c.Login(username, password)
 	defer c.Quit()
 	if err != nil {
-		job.logErr(err.Error())
-		return err
+		newErr := errors.New("FTP 登录出错：" + err.Error())
+		job.logErr(newErr.Error())
+		return newErr
 	}
 
+	job.logDebug("登录 %s 成功，准备下载文件...", username)
+
 	if job.EnableSaveFileDialog {
+		job.logDebug("准备打开文件选择对话框... TargetFile() %s", job.TargetFile())
 		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
 			dir, file := filepath.Split(path)
 			job.FileName = file
@@ -278,8 +296,6 @@ func (job *Job) downloadFtp() error {
 			job.logDebug("用户取消保存。")
 			return nil
 		}
-	} else {
-		job.FileName = filepath.Base(job.Url.Path)
 	}
 
 	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
@@ -500,17 +516,17 @@ func getFileNameByResponse(resp *http.Response) string {
 	if contentDisposition != "" {
 		_, params, err := mime.ParseMediaType(contentDisposition)
 
-		if err != nil {
-			return getFileNameByUrl(resp.Request.URL.Path)
+		if err == nil {
+			for k, v := range params {
+				// 忽略大小写
+				if strings.ToLower(k) == "filename" {
+					return v
+				}
+			}
 		}
-		return params["FileName"]
-	}
-	return getFileNameByUrl(resp.Request.URL.Path)
-}
 
-func getFileNameByUrl(downloadUrl string) string {
-	parsedUrl, _ := netUrl.Parse(downloadUrl)
-	return filepath.Base(parsedUrl.Path)
+	}
+	return filepath.Base(resp.Request.URL.Path)
 }
 
 func openSaveFileDialog(filePath string) (filepath string, ok bool) {
@@ -521,7 +537,11 @@ func openSaveFileDialog(filePath string) (filepath string, ok bool) {
 	ofn.NMaxFile = uint32(len(buf))
 	ofn.Flags = win.OFN_OVERWRITEPROMPT
 
-	filter, _ := syscall.UTF16FromString("所有文件（*.*）\000*.*\000\000")
+	// UTF16FromString 不支持中间带 \0 的字符串，所以需要手动拼接
+	filter, _ := syscall.UTF16FromString("所有文件（*.*）")
+	filterM, _ := syscall.UTF16FromString("*.*")
+	filter = append(filter, filterM...)
+	filter = append(filter, 0)
 	ofn.LpstrFilter = &filter[0]
 
 	// 转换文件名到UTF-16，并检查错误

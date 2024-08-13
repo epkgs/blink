@@ -81,10 +81,14 @@ func NewApp(setups ...func(*Config)) *Blink {
 		panic(err)
 	}
 
+	down := downloader.New(func(o *downloader.Option) {
+		o.EnableSaveFileDialog = true
+	})
+
 	blink := &Blink{
 		Config:     config,
 		Resource:   resource.New(),
-		Downloader: downloader.New(),
+		Downloader: down,
 
 		dll:   dll,
 		procs: make(map[string]*windows.Proc),
