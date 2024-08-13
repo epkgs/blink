@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/epkgs/blink/internal/cast"
@@ -29,12 +30,67 @@ type resultCallback func(result interface{}, err error)
 // resultCallback 用于区分无须返回值的情况
 type ipcHandler func(cb resultCallback, args ...interface{})
 
+// 封装 ipcPedding, 为 Get/Add/Del 提供锁保护
+type ipcPendding struct {
+	mu        *sync.Mutex
+	callbacks map[string]resultCallback
+}
+
+func newIPCPendding() *ipcPendding {
+	return &ipcPendding{
+		mu:        &sync.Mutex{},
+		callbacks: make(map[string]resultCallback),
+	}
+}
+
+func (p *ipcPendding) Add(id string, cb resultCallback) {
+	// 异步，避免阻塞
+	go func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.callbacks[id] = cb
+	}()
+
+	// 超时处理
+	go func() {
+
+		time.Sleep(10 * time.Second)
+
+		if p.mu.TryLock() {
+			defer p.mu.Unlock()
+		}
+
+		cb, exist := p.callbacks[id]
+		if !exist {
+			return
+		}
+
+		delete(p.callbacks, id) // 删除等待结果的callback
+
+		cb(nil, errors.New("等待 JS Handler 处理结果超时"))
+	}()
+}
+
+func (p *ipcPendding) Del(id string) {
+	// 异步，避免阻塞
+	go func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		delete(p.callbacks, id)
+	}()
+}
+
+func (p *ipcPendding) Get(id string) (resultCallback, bool) {
+	cb, exist := p.callbacks[id]
+	return cb, exist
+}
+
 type IPC struct {
 	mb *Blink
 
 	handlers map[string]ipcHandler
 
-	resultWaiting map[string]resultCallback
+	pendding *ipcPendding
 }
 
 type IPCMessage struct {
@@ -50,8 +106,8 @@ func newIPC(mb *Blink) *IPC {
 	ipc := &IPC{
 		mb: mb,
 
-		handlers:      make(map[string]ipcHandler),
-		resultWaiting: make(map[string]resultCallback),
+		handlers: make(map[string]ipcHandler),
+		pendding: newIPCPendding(),
 	}
 
 	ipc.registerBootScript()
@@ -74,8 +130,8 @@ func (ipc *IPC) Invoke(channel string, args ...interface{}) (interface{}, error)
 		return nil, errors.New(msg)
 	}
 
-	result := make(chan interface{})
-	err := make(chan error)
+	result := make(chan interface{}, 1)
+	err := make(chan error, 1)
 
 	// 将 callback 转 chan
 	handler(func(res interface{}, e error) {
@@ -101,7 +157,9 @@ func (ipc *IPC) Sent(channel string, args ...interface{}) error {
 
 // GO 注册 Handler
 //
-// handler 必须为函数，如有返回值，第一个返回值为正常返回值（可省略），第二个返回值为错误（可省略）
+// handler 必须为函数，参数任意，返回值最多为2个
+//   - 1个返回值：会自动判断返回值是否为 error
+//   - 2个返回值：第一个为 结果，第二个为 error
 func (ipc *IPC) Handle(channel string, handler Callback) {
 
 	// 使用反射获取处理函数的类型
@@ -159,27 +217,63 @@ func (ipc *IPC) Handle(channel string, handler Callback) {
 			}
 		}
 
-		// 调用处理函数
-		out := handlerVal.Call(inVals)
+		// 异步处理 handler
+		go func() {
 
-		if cb == nil {
-			return
-		}
+			defer func() {
+				if r := recover(); r != nil {
+					if err, ok := r.(error); ok {
+						log.Error("panic by ipc handler[ %v ]: %v", channel, err)
+						cb(nil, err)
+					}
+				}
+			}()
 
-		// 处理返回值
-		if len(out) == 0 {
-			// 没有返回值
-			go cb(nil, nil)
-		} else if len(out) == 1 {
-			// 只有一个返回值
-			go cb(out[0].Interface(), nil)
-		} else if len(out) == 2 {
-			// 有2个返回值
-			go cb(out[0].Interface(), out[1].Interface().(error))
-		} else {
-			// 多个返回值
-			go cb(nil, fmt.Errorf("multiple return values are not supported"))
-		}
+			select {
+			case <-time.After(10 * time.Second):
+				log.Debug("IPC 调用超时")
+				cb(nil, errors.New("IPC 调用超时"))
+				return
+			default:
+				// 调用处理函数
+				out := handlerVal.Call(inVals)
+
+				if cb == nil {
+					return
+				}
+
+				// 处理返回值
+				if len(out) == 0 {
+					// 没有返回值
+					cb(nil, nil)
+				} else if len(out) == 1 {
+					// 只有一个返回值
+					result := out[0].Interface()
+
+					switch res := result.(type) {
+					case error:
+						cb(nil, res)
+					default:
+						cb(res, nil)
+					}
+				} else if len(out) == 2 {
+					// 有2个返回值
+					res := out[0].Interface()
+					var err error
+					switch e := out[1].Interface().(type) {
+					case error:
+						err = e
+					default:
+						err = nil
+					}
+					cb(res, err)
+				} else {
+					// 多个返回值
+					cb(nil, fmt.Errorf("more than 2 return values are not supported"))
+				}
+			}
+
+		}()
 	}
 }
 
@@ -242,7 +336,7 @@ func (ipc *IPC) invokeByJS(view *View, msg *IPCMessage) {
 
 	// 如果 ID 为空，则无须回复返回值
 	if msg.ID == "" {
-		ipc.Sent(msg.Channel, msg.Args...)
+		_ = ipc.Sent(msg.Channel, msg.Args...)
 		return
 	}
 
@@ -270,12 +364,12 @@ func (ipc *IPC) handleJSReply(msg *IPCMessage) {
 		return
 	}
 
-	cb, exist := ipc.resultWaiting[msg.ReplyId]
+	cb, exist := ipc.pendding.Get(msg.ReplyId)
 	if !exist {
 		return
 	}
 
-	delete(ipc.resultWaiting, msg.ReplyId) // 接收到消息就从 map 中删除
+	ipc.pendding.Del(msg.ReplyId) // 接收到消息就从 map 中删除
 
 	if msg.Error != "" {
 		cb(nil, errors.New(msg.Error))
@@ -318,22 +412,9 @@ func (ipc *IPC) registerJSHandler() {
 				Args:    args,
 			}
 
-			ipc.resultWaiting[id] = cb // 暂存 result callback
+			ipc.pendding.Add(id, cb) // 添加到等待结果的 map
 
 			sentMsgToView(view, msg)
-
-			// 删除等待结果的callback
-			go func() {
-				defer delete(ipc.resultWaiting, id) // 删除等待结果的callback
-
-				time.Sleep(10 * time.Second)
-				cb, exist := ipc.resultWaiting[id]
-				if !exist {
-					return
-				}
-
-				cb(nil, errors.New("等待 JS Handler 处理结果超时"))
-			}()
 		}
 	})
 }
@@ -352,17 +433,19 @@ func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) asy
 		Args:    newArgs,
 	}
 
-	resultChan := make(chan interface{}) // result 管道
-	errChan := make(chan error)          // 错误管道
+	resultChan := make(chan interface{}, 1) // result 管道
+	errChan := make(chan error, 1)          // 错误管道
 
 	progress := async.New(10*time.Second, func() (interface{}, error) {
 		return <-resultChan, <-errChan
 	}).Start()
 
-	ipc.resultWaiting[id] = func(result interface{}, err error) {
+	cb := func(result interface{}, err error) {
 		resultChan <- result
 		errChan <- err
 	}
+
+	ipc.pendding.Add(id, cb)
 
 	sentMsgToView(view, msg)
 
