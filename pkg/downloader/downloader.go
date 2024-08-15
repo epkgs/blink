@@ -527,22 +527,14 @@ func (job *Job) fetchInfo() error {
 
 // 从 URL 中提取文件名
 func extractFilenameFromURL(url string) string {
-	parts := strings.Split(url, "/")
-	lastPart := parts[len(parts)-1]
-
-	// 去掉可能存在的？查询参数
-	name := strings.Split(lastPart, "?")
-	if len(name) > 0 {
-		return name[0]
-	}
-
-	return lastPart
+	u, _ := netUrl.Parse(url)
+	return strings.TrimPrefix(u.Path, "/")
 }
+
 func getFileNameByResponse(resp *http.Response) string {
 	contentDisposition := resp.Header.Get("Content-Disposition")
 	if contentDisposition != "" {
-		_, params, err := mime.ParseMediaType(contentDisposition)
-		if err == nil {
+		if _, params, err := mime.ParseMediaType(contentDisposition); err == nil {
 			for k, v := range params {
 				if strings.ToLower(k) == "filename" {
 					return v
@@ -550,7 +542,12 @@ func getFileNameByResponse(resp *http.Response) string {
 			}
 		}
 	}
-	return extractFilenameFromURL(resp.Request.URL.Path)
+	baseFileName := extractFilenameFromURL(resp.Request.URL.Path)
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "image") {
+		return fmt.Sprintf("%s.%s", baseFileName, strings.Split(contentType, "/")[1])
+	}
+	return baseFileName
 }
 
 func openSaveFileDialog(filePath string) (filepath string, ok bool) {
@@ -626,10 +623,10 @@ func (job *Job) DownloadFile() error {
 		return fmt.Errorf("下载任务异常： %s", r.Status)
 	}
 
-	// 解决多层重定向
 	if strings.Contains(r.Header.Get("Content-Type"), "text/html") {
-		return fmt.Errorf("html文件不支持下载")
+		return fmt.Errorf("不支持下载html文件")
 	}
+
 	job.FileName = getFileNameByResponse(r)
 
 	// 创建本地文件

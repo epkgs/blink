@@ -1,7 +1,7 @@
 package main
 
 import (
-	blink "github.com/epkgs/blink"
+	"github.com/epkgs/blink"
 	"github.com/epkgs/blink/pkg/alert"
 	"github.com/epkgs/blink/pkg/downloader"
 	"os"
@@ -21,17 +21,17 @@ func main() {
 
 	// 直接下载
 	//app.Downloader.Download("https://httpbin.org/robots.txt") // 空文件
-	//app.Downloader.DownloadFile("https://httpbin.org/robots.txt")
+	app.Downloader.DownloadFile("https://httpbin.org/robots.txt")
 	//app.Downloader.DownloadFile("https://httpbin.org/drip?duration=1&numbytes=100&code=200&delay=2")
 	//app.Downloader.DownloadFile("https://httpbin.org/stream-bytes/100")
 
 	// deflate压缩内容下载
 	//app.Downloader.Download("https://comment.bilibili.com/177987845.xml") // 空文件
-	//app.Downloader.DownloadFile("https://comment.bilibili.com/177987845.xml")
+	app.Downloader.DownloadFile("https://comment.bilibili.com/177987845.xml")
 	//app.Downloader.DownloadFile("https://httpbin.org/deflate")
 
-	// 图片下载,文件名没有获取到
-	//app.Downloader.DownloadFile("https://httpbin.org/image")
+	// 图片下载,图片文件后缀自动识别
+	app.Downloader.DownloadFile("https://httpbin.org/image")
 
 	view.LoadURL("https://catalog.ldc.upenn.edu/login")
 	view.ShowWindow()
