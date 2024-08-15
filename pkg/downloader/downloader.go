@@ -1,13 +1,16 @@
 package downloader
 
 import (
+	"compress/flate"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"mime"
 	"net/http"
+	"net/http/cookiejar"
 	netUrl "net/url"
 	"os"
 	"path/filepath"
@@ -46,13 +49,14 @@ type Job struct {
 }
 
 type Option struct {
-	Dir                  string        // 下载路径，如果为空则使用当前目录
-	FileNamePrefix       string        // 文件名前缀，默认空
-	MaxThreads           int           // 下载线程，默认4
-	MinChunkSize         uint64        // 最小分块大小，默认500KB
-	EnableSaveFileDialog bool          // 是否打开保存文件对话框，默认false
-	Overwrite            bool          // 是否覆盖已存在的文件，默认false
-	Timeout              time.Duration // 超时时间，默认10秒
+	Dir                  string         // 下载路径，如果为空则使用当前目录
+	FileNamePrefix       string         // 文件名前缀，默认空
+	MaxThreads           int            // 下载线程，默认4
+	MinChunkSize         uint64         // 最小分块大小，默认500KB
+	EnableSaveFileDialog bool           // 是否打开保存文件对话框，默认false
+	Overwrite            bool           // 是否覆盖已存在的文件，默认false
+	Timeout              time.Duration  // 超时时间，默认10秒
+	Cookies              []*http.Cookie // Cookie
 }
 
 type AfterCreateJobInterceptor func(job *Job)
@@ -110,8 +114,14 @@ func (d *Downloader) Download(url string, withOption ...func(*Option)) (string, 
 	return job.Download()
 }
 
+func (d *Downloader) DownloadFile(url string, withOption ...func(*Option)) error {
+	job, err := d.NewJob(url, withOption...)
+	if err != nil {
+		return err
+	}
+	return job.DownloadFile()
+}
 func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, error) {
-
 	log.Debug("创建下载任务：%s", url)
 
 	Url, err := netUrl.Parse(url)
@@ -480,11 +490,15 @@ func (job *Job) fetchInfo() error {
 	defer r.Body.Close()
 
 	if r.StatusCode == 404 {
-		return fmt.Errorf("文件不存在： %s", job.Url.String())
+		return fmt.Errorf("文件不存在(404)： %s", job.Url.String())
+	}
+
+	if r.StatusCode == 401 {
+		return fmt.Errorf("无权访问(401)： %s", job.Url.String())
 	}
 
 	if r.StatusCode > 299 {
-		return fmt.Errorf("连接 %s 出错。", job.Url.String())
+		return fmt.Errorf("连接 %s 出错: %s", r.StatusCode, job.Url.String())
 	}
 
 	// 检查是否支持 断点续传
@@ -511,22 +525,32 @@ func (job *Job) fetchInfo() error {
 	return nil
 }
 
+// 从 URL 中提取文件名
+func extractFilenameFromURL(url string) string {
+	parts := strings.Split(url, "/")
+	lastPart := parts[len(parts)-1]
+
+	// 去掉可能存在的？查询参数
+	name := strings.Split(lastPart, "?")
+	if len(name) > 0 {
+		return name[0]
+	}
+
+	return lastPart
+}
 func getFileNameByResponse(resp *http.Response) string {
 	contentDisposition := resp.Header.Get("Content-Disposition")
 	if contentDisposition != "" {
 		_, params, err := mime.ParseMediaType(contentDisposition)
-
 		if err == nil {
 			for k, v := range params {
-				// 忽略大小写
 				if strings.ToLower(k) == "filename" {
 					return v
 				}
 			}
 		}
-
 	}
-	return filepath.Base(resp.Request.URL.Path)
+	return extractFilenameFromURL(resp.Request.URL.Path)
 }
 
 func openSaveFileDialog(filePath string) (filepath string, ok bool) {
@@ -565,4 +589,73 @@ func (job *Job) logDebug(tpl string, vars ...interface{}) {
 func (job *Job) logErr(tpl string, vars ...interface{}) {
 
 	log.Error(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
+}
+
+func (job *Job) DownloadFile() error {
+	req, err := http.NewRequest("GET", job.Url.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	for _, cookie := range job.Option.Cookies {
+		// dat文件里存在多个域名的cookie，所以需要判断域名是否匹配
+		if strings.Contains(job.Url.Host, cookie.Domain) {
+			req.AddCookie(cookie)
+		}
+	}
+
+	var tr = &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+	jar, err := cookiejar.New(nil)
+
+	client := &http.Client{Transport: tr, Jar: jar, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		// 如果需要在重定向时添加 cookies，请在这里处理
+		req.Header.Set("Cookie", req.Header.Get("Cookie"))
+		return nil
+	}}
+	r, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+
+	if r.StatusCode != 200 {
+		return fmt.Errorf("下载任务异常： %s", r.Status)
+	}
+
+	// 解决多层重定向
+	if strings.Contains(r.Header.Get("Content-Type"), "text/html") {
+		return fmt.Errorf("html文件不支持下载")
+	}
+	job.FileName = getFileNameByResponse(r)
+
+	// 创建本地文件
+	path, ok := openSaveFileDialog(job.TargetFile())
+	if !ok {
+		return fmt.Errorf("请选择保存文件位置")
+	}
+	localFile, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer localFile.Close()
+
+	var reader io.Reader
+	// 检查Content-Encoding是否为deflate
+	contentEncoding := r.Header.Get("Content-Encoding")
+	if contentEncoding == "deflate" {
+		// 如果是deflate编码，解压缩数据
+		reader = flate.NewReader(r.Body)
+	} else {
+		// 如果不是deflate编码，直接将响应体内容写入文件
+		reader = r.Body
+	}
+	if _, e := io.Copy(localFile, reader); e != nil {
+		return e
+	}
+	// 检查文件是否成功写入
+	return localFile.Sync()
 }
