@@ -65,7 +65,7 @@ func main() {
 			alert.Error("下载失败", err.Error())
 			return
 		}
-		alert.Success("提示", "下载成功！")
+		alert.Info("提示", "下载成功！")
 	})
 
 	app.KeepRunning()
