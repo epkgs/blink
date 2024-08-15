@@ -12,7 +12,7 @@ import (
 )
 
 func LoadDLL(dllFile, tempPath string) (*windows.DLL, error) {
-
+	// 建议将dll做个hash，加载时批判默认目录的dll是否为完整的dll，不完整的话从小释放dll
 	// 尝试直接从默认目录里加载 DLL
 	if loaded, err := windows.LoadDLL(dllFile); err == nil {
 		log.Debug("直接加载DLL: %s", dllFile)
