@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	blink "github.com/epkgs/blink"
+	"github.com/epkgs/blink/pkg/alert"
 	"github.com/epkgs/blink/pkg/downloader"
 	"os"
 )
@@ -62,8 +62,10 @@ func main() {
 				option.Cookies = app.Config.ParseCookie(app.Config.GetCookieFileABS())
 			}
 		}); err != nil {
-			fmt.Println(err)
+			alert.Error("下载失败", err.Error())
+			return
 		}
+		alert.Success("提示", "下载成功！")
 	})
 
 	app.KeepRunning()
