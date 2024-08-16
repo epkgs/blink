@@ -66,7 +66,6 @@ type Blink struct {
 }
 
 func NewApp(setups ...func(*Config)) *Blink {
-
 	config, err := NewConfig(setups...)
 	if err != nil {
 		log.Error("NewConfig ERR: %v", err)
