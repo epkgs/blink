@@ -490,15 +490,15 @@ func (job *Job) fetchInfo() error {
 	defer r.Body.Close()
 
 	if r.StatusCode == 404 {
-		return fmt.Errorf("文件不存在(404)： %s", job.Url.String())
+		return fmt.Errorf("文件不存在(404): %s", job.Url.String())
 	}
 
 	if r.StatusCode == 401 {
-		return fmt.Errorf("无权访问(401)： %s", job.Url.String())
+		return fmt.Errorf("无权访问(401): %s", job.Url.String())
 	}
 
 	if r.StatusCode > 299 {
-		return fmt.Errorf("连接 %s 出错: %s", r.StatusCode, job.Url.String())
+		return fmt.Errorf("连接出错(%d): %s", r.StatusCode, job.Url.String())
 	}
 
 	// 检查是否支持 断点续传
@@ -543,8 +543,7 @@ func getFileNameByResponse(resp *http.Response) string {
 		}
 	}
 	baseFileName := extractFilenameFromURL(resp.Request.URL.Path)
-	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "image") {
+	if contentType := resp.Header.Get("Content-Type"); strings.Contains(contentType, "image") {
 		return fmt.Sprintf("%s.%s", baseFileName, strings.Split(contentType, "/")[1])
 	}
 	return baseFileName
