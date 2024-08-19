@@ -329,10 +329,9 @@ func (job *Job) downloadFtp() error {
 
 func (job *Job) downloadHttp() error {
 
-	if err := job.fetchInfo(); err != nil {
-		job.logErr("获取文件信息出错：" + err.Error())
-		return err
-	}
+	// 301 跳转会导致 head 失败
+	// 不管是否失败，都进行下载（将会使用单线程模式下载）
+	job.fetchInfo()
 
 	job.logDebug("创建任务 %s", job.Url)
 	if job.EnableSaveFileDialog {
@@ -502,20 +501,23 @@ func (job *Job) downloadChunk(file *os.File, start, end uint64) error {
 	return err
 }
 
-func (job *Job) fetchInfo() error {
+func (job *Job) fetchInfo() {
 
 	r, err := http.Head(job.Url.String())
 	if err != nil {
-		return err
+		job.logErr("fetchInfo 失败： %s", err.Error())
+		return
 	}
 	defer r.Body.Close()
 
 	if r.StatusCode == 404 {
-		return fmt.Errorf("文件不存在： %s", job.Url.String())
+		job.logErr("文件不存在(404)： %s")
+		return
 	}
 
 	if r.StatusCode > 299 {
-		return fmt.Errorf("连接 %s 出错。", job.Url.String())
+		job.logErr("连接出错(%d)： %s", r.StatusCode, job.Url.String())
+		return
 	}
 
 	// 检查是否支持 断点续传
@@ -530,7 +532,7 @@ func (job *Job) fetchInfo() error {
 	if err != nil {
 		job.isSupportRange = false
 		job.FileSize = 0
-		return nil
+		return
 	}
 
 	job.FileSize = contentLength
@@ -538,8 +540,6 @@ func (job *Job) fetchInfo() error {
 	if !job.EnableSaveFileDialog {
 		job.FileName = getFileNameByResponse(r)
 	}
-
-	return nil
 }
 
 func getFileNameByResponse(resp *http.Response) string {
