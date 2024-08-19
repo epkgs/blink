@@ -241,6 +241,26 @@ func (job *Job) AvaiableTreads() int {
 	return threads
 }
 
+func (job *Job) saveFileDialog() error {
+	if job.EnableSaveFileDialog {
+		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
+			dir, file := filepath.Split(path)
+			job.FileName = file
+			job.Dir = dir
+			job.Overwrite = true
+		} else {
+			job.logDebug("用户取消保存。")
+			return errors.New("用户取消保存。")
+		}
+	}
+
+	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
+		job.logDebug("文件名不正确: %s", job.FileName)
+		return errors.New("文件名不正确。")
+	}
+
+	return nil
+}
 func (job *Job) Download() (string, error) {
 
 	// 下载之前的拦截器
@@ -385,26 +405,7 @@ func (job *Job) downloadHttp() error {
 	// 保存文件之前的拦截器
 	job.BeforeSaveFileInterceptor(job)
 
-	if job.EnableSaveFileDialog {
-
-		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
-			dir, file := filepath.Split(path)
-			job.FileName = file
-			job.Dir = dir
-			job.Overwrite = true
-		} else {
-			job.logDebug("用户取消保存。")
-			return errors.New("用户取消保存。")
-		}
-	}
-
-	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
-		job.logDebug("文件名不正确: %s", job.FileName)
-		return errors.New("文件名不正确。")
-	}
-
 	if job.isSupportRange {
-
 		if err := job.multiThreadDownload(); err != nil {
 			job.logErr(err.Error())
 			return err
@@ -442,6 +443,15 @@ func (job *Job) singleThreadDownload() error {
 	}
 	defer r.Body.Close()
 
+	// 当job.fetchInfo()的head是404的时候（通过html跳转的情况），重新取出文件名
+	if !strings.Contains(job.FileName, ".") {
+		job.FileName = getFileNameByResponse(r)
+	}
+
+	if err := job.saveFileDialog(); err != nil {
+		return err
+	}
+
 	// 检查Content-Encoding是否为deflate
 	contentEncoding := r.Header.Get("Content-Encoding")
 	fmt.Printf("Content-Encoding: %s\n", contentEncoding)
@@ -455,6 +465,10 @@ func (job *Job) multiThreadDownload() error {
 
 	theads := job.AvaiableTreads()
 	job.logDebug("文件将以多线程进行下载，线程：%d", theads)
+
+	if err := job.saveFileDialog(); err != nil {
+		return err
+	}
 
 	// 打开文件准备写入
 	file, err := job.createTargetFile()

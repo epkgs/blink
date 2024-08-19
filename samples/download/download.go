@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/epkgs/blink"
 	"github.com/epkgs/blink/pkg/alert"
@@ -75,10 +76,9 @@ func main() {
 	view.OnDownload(func(url string) {
 
 		_, err := app.Download(url, func(o *downloader.Option) {
-			o.BeforeSaveFileInterceptor = func(job *downloader.Job) {
-				// 修改文件名
-				job.FileName += ".html"
-			}
+			o.Cookies, _ = app.GetCookies()
+			o.InsecureSkipVerify = true
+			o.Timeout = 10 * time.Minute
 
 			// 可自定义其他下载选项
 
