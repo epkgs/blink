@@ -352,13 +352,44 @@ func (job *Job) downloadHttp() error {
 		return errors.New("文件名不正确。")
 	}
 
-	if err := job.multiThreadDownload(); err != nil {
-		job.logErr(err.Error())
-		return err
+	if job.isSupportRange {
+
+		if err := job.multiThreadDownload(); err != nil {
+			job.logErr(err.Error())
+			return err
+		}
+	} else {
+		if err := job.singleThreadDownload(); err != nil {
+			job.logErr(err.Error())
+			return err
+		}
 	}
 
 	job.logDebug("下载完成：%s", job.TargetFile())
 	return nil
+}
+
+func (job *Job) singleThreadDownload() error {
+
+	job.logDebug("文件将以单进程模式下载。")
+
+	// 打开文件准备写入
+	file, err := job.createTargetFile()
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// 实现默认下载逻辑
+	// 使用http.Get或其他方式下载整个文件
+	resp, err := http.Get(job.Url.String())
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(file, resp.Body)
+	return err
 }
 
 func (job *Job) multiThreadDownload() error {
