@@ -48,7 +48,7 @@ type Option struct {
 	InsecureSkipVerify   bool           // 跳过证书验证，默认false
 	Cookies              []*http.Cookie // 请求头Cookie，默认空。
 
-	Interceptors IInterceptors
+	Interceptors IInterceptors // 拦截器
 }
 
 type Downloader struct {
