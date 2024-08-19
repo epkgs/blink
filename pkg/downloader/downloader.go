@@ -442,10 +442,6 @@ func (job *Job) singleThreadDownload() error {
 	}
 	defer r.Body.Close()
 
-	// 检查Content-Encoding是否为deflate
-	contentEncoding := r.Header.Get("Content-Encoding")
-	fmt.Printf("Content-Encoding: %s\n", contentEncoding)
-
 	reader := job.HttpDownloadingInterceptor(r, req)
 	_, err = io.Copy(file, reader)
 	return err
