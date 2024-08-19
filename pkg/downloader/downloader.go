@@ -337,7 +337,7 @@ func (job *Job) downloadHttp() error {
 			job.Dir = dir
 		} else {
 			job.logDebug("用户取消保存。")
-			return nil
+			return errors.New("用户取消保存。")
 		}
 	}
 
