@@ -300,7 +300,7 @@ func (job *Job) downloadFtp() error {
 
 	job.logDebug("登录 %s 成功，准备下载文件...", username)
 
-	// 保持文件之前的拦截器
+	// 保存文件之前的拦截器
 	job.BeforeSaveFileInterceptor(job)
 
 	if job.EnableSaveFileDialog {
@@ -382,7 +382,7 @@ func (job *Job) downloadHttp() error {
 
 	job.logDebug("创建任务 %s", job.Url)
 
-	// 保持文件之前的拦截器
+	// 保存文件之前的拦截器
 	job.BeforeSaveFileInterceptor(job)
 
 	if job.EnableSaveFileDialog {
