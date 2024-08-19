@@ -11,7 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/epkgs/blink/internal/log"
-	"github.com/epkgs/blink/internal/utils"
+	"github.com/epkgs/blink/pkg/utils"
 	"github.com/lxn/win"
 )
 

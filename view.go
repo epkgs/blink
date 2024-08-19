@@ -12,8 +12,8 @@ import (
 	"unsafe"
 
 	"github.com/epkgs/blink/internal/log"
-	"github.com/epkgs/blink/internal/utils"
 	"github.com/epkgs/blink/pkg/async"
+	"github.com/epkgs/blink/pkg/utils"
 )
 
 type OnDomEventCallback func()
