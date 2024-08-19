@@ -30,6 +30,13 @@ type IHttpDownloadingInterceptor func(resp *http.Response, req *http.Request) io
 type IFtpDownloadingInterceptor func(resp *ftp.Response, url netUrl.URL) io.Reader
 type IBeforeSaveFileInterceptor func(job *Job)
 
+type IInterceptors struct {
+	BeforeDownload  IBeforeDownloadInterceptor
+	HttpDownloading IHttpDownloadingInterceptor
+	FtpDownloading  IFtpDownloadingInterceptor
+	BeforeSaveFile  IBeforeSaveFileInterceptor
+}
+
 type Option struct {
 	Dir                  string         // 下载路径，如果为空则使用当前目录
 	FileNamePrefix       string         // 文件名前缀，默认空
@@ -41,10 +48,7 @@ type Option struct {
 	InsecureSkipVerify   bool           // 跳过证书验证，默认false
 	Cookies              []*http.Cookie // 请求头Cookie，默认空。
 
-	BeforeDownloadInterceptor  IBeforeDownloadInterceptor
-	HttpDownloadingInterceptor IHttpDownloadingInterceptor
-	FtpDownloadingInterceptor  IFtpDownloadingInterceptor
-	BeforeSaveFileInterceptor  IBeforeSaveFileInterceptor
+	Interceptors IInterceptors
 }
 
 type Downloader struct {
@@ -79,10 +83,12 @@ func (opt Option) cloneOption() Option {
 		InsecureSkipVerify:   opt.InsecureSkipVerify,
 		Cookies:              opt.Cookies,
 
-		BeforeDownloadInterceptor:  opt.BeforeDownloadInterceptor,
-		HttpDownloadingInterceptor: opt.HttpDownloadingInterceptor,
-		FtpDownloadingInterceptor:  opt.FtpDownloadingInterceptor,
-		BeforeSaveFileInterceptor:  opt.BeforeSaveFileInterceptor,
+		Interceptors: IInterceptors{
+			BeforeDownload:  opt.Interceptors.BeforeDownload,
+			HttpDownloading: opt.Interceptors.HttpDownloading,
+			FtpDownloading:  opt.Interceptors.FtpDownloading,
+			BeforeSaveFile:  opt.Interceptors.BeforeSaveFile,
+		},
 	}
 }
 
@@ -100,14 +106,16 @@ func New(withOption ...func(*Option)) *Downloader {
 		InsecureSkipVerify:   false,
 		Cookies:              make([]*http.Cookie, 0),
 
-		BeforeDownloadInterceptor: func(job *Job) {}, // 默认空实现
-		HttpDownloadingInterceptor: func(resp *http.Response, req *http.Request) io.Reader {
-			return resp.Body
+		Interceptors: IInterceptors{
+			BeforeDownload: func(job *Job) {}, // 默认空实现
+			HttpDownloading: func(resp *http.Response, req *http.Request) io.Reader {
+				return resp.Body
+			},
+			FtpDownloading: func(resp *ftp.Response, url netUrl.URL) io.Reader {
+				return resp
+			},
+			BeforeSaveFile: func(job *Job) {}, // 默认空实现
 		},
-		FtpDownloadingInterceptor: func(resp *ftp.Response, url netUrl.URL) io.Reader {
-			return resp
-		},
-		BeforeSaveFileInterceptor: func(job *Job) {}, // 默认空实现
 	}
 
 	for _, set := range withOption {
@@ -244,7 +252,7 @@ func (job *Job) AvaiableTreads() int {
 func (job *Job) Download() (string, error) {
 
 	// 下载之前的拦截器
-	job.BeforeDownloadInterceptor(job)
+	job.Interceptors.BeforeDownload(job)
 
 	var err error
 	if job.isFtp {
@@ -301,7 +309,7 @@ func (job *Job) downloadFtp() error {
 	job.logDebug("登录 %s 成功，准备下载文件...", username)
 
 	// 保存文件之前的拦截器
-	job.BeforeSaveFileInterceptor(job)
+	job.Interceptors.BeforeSaveFile(job)
 
 	if job.EnableSaveFileDialog {
 		job.logDebug("准备打开文件选择对话框... TargetFile() %s", job.TargetFile())
@@ -335,7 +343,7 @@ func (job *Job) downloadFtp() error {
 	}
 	defer file.Close()
 
-	buf, err := io.ReadAll(job.FtpDownloadingInterceptor(r, *job.Url))
+	buf, err := io.ReadAll(job.Interceptors.FtpDownloading(r, *job.Url))
 	if err != nil {
 		return err
 	}
@@ -383,7 +391,7 @@ func (job *Job) downloadHttp() error {
 	job.logDebug("创建任务 %s", job.Url)
 
 	// 保存文件之前的拦截器
-	job.BeforeSaveFileInterceptor(job)
+	job.Interceptors.BeforeSaveFile(job)
 
 	if job.EnableSaveFileDialog {
 
@@ -442,7 +450,7 @@ func (job *Job) singleThreadDownload() error {
 	}
 	defer r.Body.Close()
 
-	reader := job.HttpDownloadingInterceptor(r, req)
+	reader := job.Interceptors.HttpDownloading(r, req)
 	_, err = io.Copy(file, reader)
 	return err
 }
@@ -552,7 +560,7 @@ func (job *Job) downloadChunk(file *os.File, start, end uint64) error {
 		return err
 	}
 
-	reader := job.HttpDownloadingInterceptor(resp, req)
+	reader := job.Interceptors.HttpDownloading(resp, req)
 
 	// 将HTTP响应的Body内容写入到文件中
 	_, err = io.Copy(file, reader)
