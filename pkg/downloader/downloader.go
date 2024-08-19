@@ -39,7 +39,7 @@ type Option struct {
 	Overwrite            bool           // 是否覆盖已存在的文件，默认false
 	Timeout              time.Duration  // 超时时间，默认10秒
 	InsecureSkipVerify   bool           // 跳过证书验证，默认false
-	Cookies              []*http.Cookie // 请求头Cookie，默认空。（使用 []http.Cookie 而不是 []*http.Cookie，避免GC问题）
+	Cookies              []*http.Cookie // 请求头Cookie，默认空。
 
 	BeforeDownloadInterceptor  IBeforeDownloadInterceptor
 	HttpDownloadingInterceptor IHttpDownloadingInterceptor
