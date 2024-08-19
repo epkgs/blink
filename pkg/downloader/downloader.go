@@ -71,14 +71,9 @@ func (opt Option) cloneOption() Option {
 
 func New(withOption ...func(*Option)) *Downloader {
 
-	pwd, err := os.Getwd()
-	if err != nil {
-		pwd = ""
-	}
-
 	// 默认参数
 	opt := Option{
-		Dir:                  pwd,
+		Dir:                  "",
 		FileNamePrefix:       "",
 		MaxThreads:           4,
 		MinChunkSize:         500 * 1024, // 500KB
