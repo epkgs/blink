@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/epkgs/blink/internal/log"
+	dl "github.com/epkgs/blink/pkg/downloader"
+	"github.com/epkgs/blink/pkg/utils"
 )
 
 type Config struct {
@@ -17,6 +19,8 @@ type Config struct {
 	storagePath string
 	// 设置cookie文件名
 	cookieFile string
+	// 默认下载器
+	Downloader *dl.Downloader
 }
 
 func NewConfig(setups ...func(*Config)) (*Config, error) {
@@ -29,6 +33,14 @@ func NewConfig(setups ...func(*Config)) (*Config, error) {
 		storagePath: "LocalStorage",
 		cookieFile:  "cookie.dat",
 	}
+
+	conf.Downloader = dl.New(func(o *dl.Option) {
+		o.EnableSaveFileDialog = true
+		o.BeforeDownloadInterceptor = func(job *dl.Job) {
+			cookies, _ := utils.ParseNetscapeCookieFile(conf.GetCookieFileABS())
+			job.Cookies = cookies
+		}
+	})
 
 	for _, setup := range setups {
 		setup(conf)
@@ -63,6 +75,12 @@ func WithStoragePath(path string) func(*Config) {
 func WithCookieFile(path string) func(*Config) {
 	return func(conf *Config) {
 		conf.cookieFile = path
+	}
+}
+
+func WithDownloader(downloader *dl.Downloader) func(*Config) {
+	return func(conf *Config) {
+		conf.Downloader = downloader
 	}
 }
 

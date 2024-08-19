@@ -91,8 +91,8 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 
 	view.Window = newWindow(mb, view, windowType)
 
-	view.SetLocalStorageFullPath(view.mb.Config.GetStoragePath())
-	view.SetCookieJarFullPath(view.mb.Config.GetCookieFileABS())
+	view.SetLocalStorageFullPath(view.mb.GetStoragePath())
+	view.SetCookieJarFullPath(view.mb.GetCookieFileABS())
 
 	view.registerFileSystem()
 
@@ -104,7 +104,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 
 	// 添加默认下载操作
 	view.OnDownload(func(url string) {
-		view.mb.Downloader.Download(url)
+		mb.Download(url)
 	})
 
 	return view
@@ -681,6 +681,7 @@ func (v *View) OnTitleChanged(callback OnTitleChangedCallback) (stop func()) {
 	}
 }
 
+// 下载仅能使用一次，多次使用将覆盖前一个回调函数
 func (v *View) OnDownload(callback OnDownloadCallback) (stop func()) {
 
 	v._onDownload.Register.Do(func() {
@@ -695,7 +696,8 @@ func (v *View) OnDownload(callback OnDownloadCallback) (stop func()) {
 		v.mb.CallFunc("wkeOnDownload", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
-	key := utils.RandString(10)
+	// key := utils.RandString(10)
+	key := "OnDownload" // 固定 KEY，仅支持一个回调函数
 
 	v._onDownload.Callbacks[key] = callback
 

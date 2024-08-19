@@ -2,12 +2,14 @@ package downloader
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"mime"
 	"net/http"
+	"net/http/cookiejar"
 	netUrl "net/url"
 	"os"
 	"path/filepath"
@@ -23,11 +25,31 @@ import (
 	"github.com/lxn/win"
 )
 
+type IBeforeDownloadInterceptor func(job *Job)
+type IHttpDownloadingInterceptor func(resp *http.Response, req *http.Request) io.Reader
+type IFtpDownloadingInterceptor func(resp *ftp.Response, url netUrl.URL) io.Reader
+type IBeforeSaveFileInterceptor func(job *Job)
+
+type Option struct {
+	Dir                  string         // 下载路径，如果为空则使用当前目录
+	FileNamePrefix       string         // 文件名前缀，默认空
+	MaxThreads           int            // 下载线程，默认4
+	MinChunkSize         uint64         // 最小分块大小，默认500KB
+	EnableSaveFileDialog bool           // 是否打开保存文件对话框，默认false
+	Overwrite            bool           // 是否覆盖已存在的文件，默认false
+	Timeout              time.Duration  // 超时时间，默认10秒
+	InsecureSkipVerify   bool           // 跳过证书验证，默认false
+	Cookies              []*http.Cookie // 请求头Cookie，默认空。（使用 []http.Cookie 而不是 []*http.Cookie，避免GC问题）
+
+	BeforeDownloadInterceptor  IBeforeDownloadInterceptor
+	HttpDownloadingInterceptor IHttpDownloadingInterceptor
+	FtpDownloadingInterceptor  IFtpDownloadingInterceptor
+	BeforeSaveFileInterceptor  IBeforeSaveFileInterceptor
+}
+
 type Downloader struct {
 	lastJobId uint64
 	Option
-
-	afterCreateJobInterceptor AfterCreateJobInterceptor
 }
 
 type Job struct {
@@ -40,22 +62,10 @@ type Job struct {
 	FileSize       uint64
 	isSupportRange bool
 	isFtp          bool
-	ticker         *time.Ticker
+	httpClient     *http.Client
 
 	_lck *sync.Mutex // 用于确保写入文件的顺序
 }
-
-type Option struct {
-	Dir                  string        // 下载路径，如果为空则使用当前目录
-	FileNamePrefix       string        // 文件名前缀，默认空
-	MaxThreads           int           // 下载线程，默认4
-	MinChunkSize         uint64        // 最小分块大小，默认500KB
-	EnableSaveFileDialog bool          // 是否打开保存文件对话框，默认false
-	Overwrite            bool          // 是否覆盖已存在的文件，默认false
-	Timeout              time.Duration // 超时时间，默认10秒
-}
-
-type AfterCreateJobInterceptor func(job *Job)
 
 func (opt Option) cloneOption() Option {
 	return Option{
@@ -66,6 +76,13 @@ func (opt Option) cloneOption() Option {
 		EnableSaveFileDialog: opt.EnableSaveFileDialog,
 		Overwrite:            opt.Overwrite,
 		Timeout:              opt.Timeout,
+		InsecureSkipVerify:   opt.InsecureSkipVerify,
+		Cookies:              opt.Cookies,
+
+		BeforeDownloadInterceptor:  opt.BeforeDownloadInterceptor,
+		HttpDownloadingInterceptor: opt.HttpDownloadingInterceptor,
+		FtpDownloadingInterceptor:  opt.FtpDownloadingInterceptor,
+		BeforeSaveFileInterceptor:  opt.BeforeSaveFileInterceptor,
 	}
 }
 
@@ -80,6 +97,17 @@ func New(withOption ...func(*Option)) *Downloader {
 		EnableSaveFileDialog: false,
 		Overwrite:            false,
 		Timeout:              10 * time.Second,
+		InsecureSkipVerify:   false,
+		Cookies:              make([]*http.Cookie, 0),
+
+		BeforeDownloadInterceptor: func(job *Job) {}, // 默认空实现
+		HttpDownloadingInterceptor: func(resp *http.Response, req *http.Request) io.Reader {
+			return resp.Body
+		},
+		FtpDownloadingInterceptor: func(resp *ftp.Response, url netUrl.URL) io.Reader {
+			return resp
+		},
+		BeforeSaveFileInterceptor: func(job *Job) {}, // 默认空实现
 	}
 
 	for _, set := range withOption {
@@ -90,9 +118,6 @@ func New(withOption ...func(*Option)) *Downloader {
 		lastJobId: 0,
 		Option:    opt,
 	}
-
-	// 空实现
-	downloader.afterCreateJobInterceptor = func(job *Job) {}
 
 	return downloader
 }
@@ -132,16 +157,11 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 		FileSize:       0,
 		isSupportRange: false,
 		isFtp:          Url.Scheme == "ftp",
-		ticker:         time.NewTicker(opt.Timeout),
 	}
 
-	d.afterCreateJobInterceptor(job)
+	job.httpClient = job.newHttpClient()
 
 	return job, nil
-}
-
-func (d *Downloader) AfterCreateJob(interceptor AfterCreateJobInterceptor) {
-	d.afterCreateJobInterceptor = interceptor
 }
 
 func (job *Job) TargetFile() string {
@@ -222,29 +242,28 @@ func (job *Job) AvaiableTreads() int {
 }
 
 func (job *Job) Download() (string, error) {
-	select {
-	case <-job.ticker.C:
-		return "", errors.New("下载超时")
-	default:
-		var err error
-		if job.isFtp {
-			job.logDebug("下载FTP文件")
-			err = job.downloadFtp()
-		} else {
-			job.logDebug("下载HTTP文件")
-			err = job.downloadHttp()
-		}
 
-		if err != nil {
-			return "", err
-		}
+	// 下载之前的拦截器
+	job.BeforeDownloadInterceptor(job)
 
-		targetFile := job.TargetFile()
-
-		job.logDebug("下载完成， 文件路径：%s", targetFile)
-
-		return targetFile, nil
+	var err error
+	if job.isFtp {
+		job.logDebug("下载FTP文件")
+		err = job.downloadFtp()
+	} else {
+		job.logDebug("下载HTTP文件")
+		err = job.downloadHttp()
 	}
+
+	if err != nil {
+		return "", err
+	}
+
+	targetFile := job.TargetFile()
+
+	job.logDebug("下载完成， 文件路径：%s", targetFile)
+
+	return targetFile, nil
 }
 
 func (job *Job) downloadFtp() error {
@@ -281,20 +300,24 @@ func (job *Job) downloadFtp() error {
 
 	job.logDebug("登录 %s 成功，准备下载文件...", username)
 
+	// 保持文件之前的拦截器
+	job.BeforeSaveFileInterceptor(job)
+
 	if job.EnableSaveFileDialog {
 		job.logDebug("准备打开文件选择对话框... TargetFile() %s", job.TargetFile())
 		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
 			dir, file := filepath.Split(path)
 			job.FileName = file
 			job.Dir = dir
+			job.Overwrite = true
 		} else {
 			job.logDebug("用户取消保存。")
 			return nil
 		}
 	}
 
-	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
-		return fmt.Errorf("文件名不正确: %s", job.FileName)
+	if job.FileName == "" {
+		return errors.New("文件名不能为空！")
 	}
 
 	job.logDebug("创建任务 %s", job.Url.String())
@@ -312,7 +335,7 @@ func (job *Job) downloadFtp() error {
 	}
 	defer file.Close()
 
-	buf, err := io.ReadAll(r)
+	buf, err := io.ReadAll(job.FtpDownloadingInterceptor(r, *job.Url))
 	if err != nil {
 		return err
 	}
@@ -322,6 +345,35 @@ func (job *Job) downloadFtp() error {
 	return err
 }
 
+func (job *Job) newHttpClient() *http.Client {
+
+	// 创建一个cookie jar
+	jar, err := cookiejar.New(nil)
+	if err == nil {
+		for _, cookie := range job.Cookies {
+			// dat文件里存在多个域名的cookie，所以需要判断域名是否匹配
+			if strings.Contains(job.Url.Host, cookie.Domain) {
+				jar.SetCookies(job.Url, []*http.Cookie{cookie})
+			}
+		}
+	}
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			// 忽略证书验证
+			InsecureSkipVerify: job.InsecureSkipVerify,
+		},
+	}
+
+	client := &http.Client{
+		Transport: tr,
+		Jar:       jar,
+		Timeout:   job.Timeout,
+	}
+
+	return client
+}
+
 func (job *Job) downloadHttp() error {
 
 	// 301 跳转会导致 head 失败
@@ -329,12 +381,17 @@ func (job *Job) downloadHttp() error {
 	job.fetchInfo()
 
 	job.logDebug("创建任务 %s", job.Url)
+
+	// 保持文件之前的拦截器
+	job.BeforeSaveFileInterceptor(job)
+
 	if job.EnableSaveFileDialog {
 
 		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
 			dir, file := filepath.Split(path)
 			job.FileName = file
 			job.Dir = dir
+			job.Overwrite = true
 		} else {
 			job.logDebug("用户取消保存。")
 			return errors.New("用户取消保存。")
@@ -375,14 +432,22 @@ func (job *Job) singleThreadDownload() error {
 	defer file.Close()
 
 	// 实现默认下载逻辑
-	// 使用http.Get或其他方式下载整个文件
-	resp, err := http.Get(job.Url.String())
+	req, err := http.NewRequest(http.MethodGet, job.Url.String(), nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	r, err := job.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
 
-	_, err = io.Copy(file, resp.Body)
+	// 检查Content-Encoding是否为deflate
+	contentEncoding := r.Header.Get("Content-Encoding")
+	fmt.Printf("Content-Encoding: %s\n", contentEncoding)
+
+	reader := job.HttpDownloadingInterceptor(r, req)
+	_, err = io.Copy(file, reader)
 	return err
 }
 
@@ -471,7 +536,7 @@ func (job *Job) downloadChunk(file *os.File, start, end uint64) error {
 
 	// 设置Range头实现断点续传
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := job.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -491,14 +556,22 @@ func (job *Job) downloadChunk(file *os.File, start, end uint64) error {
 		return err
 	}
 
+	reader := job.HttpDownloadingInterceptor(resp, req)
+
 	// 将HTTP响应的Body内容写入到文件中
-	_, err = io.Copy(file, resp.Body)
+	_, err = io.Copy(file, reader)
 	return err
 }
 
 func (job *Job) fetchInfo() {
 
-	r, err := http.Head(job.Url.String())
+	req, err := http.NewRequest("HEAD", job.Url.String(), nil)
+	if err != nil {
+		job.logErr("创建 fetchInfo HEAD 请求失败： %s", err.Error())
+		return
+	}
+
+	r, err := job.httpClient.Do(req)
 	if err != nil {
 		job.logErr("fetchInfo 失败： %s", err.Error())
 		return
@@ -531,10 +604,7 @@ func (job *Job) fetchInfo() {
 	}
 
 	job.FileSize = contentLength
-
-	if !job.EnableSaveFileDialog {
-		job.FileName = getFileNameByResponse(r)
-	}
+	job.FileName = getFileNameByResponse(r)
 }
 
 func getFileNameByResponse(resp *http.Response) string {

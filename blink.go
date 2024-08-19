@@ -1,6 +1,7 @@
 package blink
 
 import (
+	"net/http"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -11,6 +12,7 @@ import (
 	"github.com/epkgs/blink/pkg/downloader"
 	"github.com/epkgs/blink/pkg/queue"
 	"github.com/epkgs/blink/pkg/resource"
+	"github.com/epkgs/blink/pkg/utils"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 )
@@ -41,13 +43,12 @@ type CallFuncResult struct {
 }
 
 type Blink struct {
-	Config *Config
-	IPC    *IPC
+	*Config
+	IPC *IPC
 
 	js *JS
 
-	Resource   *resource.Resource
-	Downloader *downloader.Downloader
+	Resource *resource.Resource
 
 	dll   *windows.DLL
 	procs map[string]*windows.Proc
@@ -81,14 +82,9 @@ func NewApp(setups ...func(*Config)) *Blink {
 		panic(err)
 	}
 
-	down := downloader.New(func(o *downloader.Option) {
-		o.EnableSaveFileDialog = true
-	})
-
 	blink := &Blink{
-		Config:     config,
-		Resource:   resource.New(),
-		Downloader: down,
+		Config:   config,
+		Resource: resource.New(),
 
 		dll:   dll,
 		procs: make(map[string]*windows.Proc),
@@ -456,4 +452,13 @@ func (mb *Blink) GetString(str WkeString) string {
 	p, _, _ := mb.CallFunc("wkeGetString", uintptr(str))
 
 	return PtrToString(p)
+}
+
+func (mb *Blink) GetCookies() ([]*http.Cookie, error) {
+	return utils.ParseNetscapeCookieFile(mb.GetCookieFileABS())
+}
+
+// alias， 缩短代码
+func (mb *Blink) Download(url string, withOption ...func(*downloader.Option)) (string, error) {
+	return mb.Downloader.Download(url, withOption...)
 }
