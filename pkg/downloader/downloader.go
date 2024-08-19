@@ -588,6 +588,9 @@ func (job *Job) fetchInfo() {
 		return
 	}
 
+	// 获取文件名
+	job.FileName = getFileNameByResponse(r)
+
 	// 检查是否支持 断点续传
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
 	if r.Header.Get("Accept-Ranges") == "bytes" {
@@ -604,7 +607,6 @@ func (job *Job) fetchInfo() {
 	}
 
 	job.FileSize = contentLength
-	job.FileName = getFileNameByResponse(r)
 }
 
 func getFileNameByResponse(resp *http.Response) string {
