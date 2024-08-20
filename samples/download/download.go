@@ -41,7 +41,7 @@ func main() {
 			}
 		}
 	})
-	alert.Info("提示", "下载成功！")
+
 	// 保存文件之前修改文件名
 	app.Download("https://httpbin.org/image", func(o *downloader.Option) {
 		o.Interceptors.BeforeSaveFile = func(job *downloader.Job) {

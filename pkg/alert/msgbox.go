@@ -12,9 +12,8 @@ func strToWcharPtr(s string) *uint16 {
 }
 
 func messageBox(title, content string, flag uint32) int32 {
-	hwnd := win.GetActiveWindow() // 当前激活的窗口
-	win.SetForegroundWindow(hwnd) // 弹窗置于目标窗口之上
-	return win.MessageBox(hwnd, strToWcharPtr(content), strToWcharPtr(title), flag)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title),
+		flag|win.MB_OK|win.MB_TOPMOST|win.MB_SETFOREGROUND) // 弹窗置顶
 }
 
 func pick(defaultTitle string, titleOrContent string, contents ...string) (title string, content string) {
@@ -27,15 +26,15 @@ func pick(defaultTitle string, titleOrContent string, contents ...string) (title
 
 func Error(titleOrContent string, contents ...string) int32 {
 	title, content := pick("错误", titleOrContent, contents...)
-	return messageBox(title, content, win.MB_OK|win.MB_ICONERROR)
+	return messageBox(title, content, win.MB_ICONERROR)
 }
 
 func Info(titleOrContent string, contents ...string) int32 {
 	title, content := pick("提示", titleOrContent, contents...)
-	return messageBox(title, content, win.MB_OK|win.MB_ICONINFORMATION)
+	return messageBox(title, content, win.MB_ICONINFORMATION)
 }
 
 func Warning(titleOrContent string, contents ...string) int32 {
 	title, content := pick("警告", titleOrContent, contents...)
-	return messageBox(title, content, win.MB_OK|win.MB_ICONWARNING)
+	return messageBox(title, content, win.MB_ICONWARNING)
 }
