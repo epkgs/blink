@@ -36,7 +36,7 @@ func NewConfig(setups ...func(*Config)) (*Config, error) {
 
 	conf.Downloader = dl.New(func(o *dl.Option) {
 		o.EnableSaveFileDialog = true
-		o.BeforeDownloadInterceptor = func(job *dl.Job) {
+		o.Interceptors.BeforeDownload = func(job *dl.Job) {
 			cookies, _ := utils.ParseNetscapeCookieFile(conf.GetCookieFileABS())
 			job.Cookies = cookies
 		}

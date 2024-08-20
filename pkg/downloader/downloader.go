@@ -30,6 +30,13 @@ type IHttpDownloadingInterceptor func(resp *http.Response, req *http.Request) io
 type IFtpDownloadingInterceptor func(resp *ftp.Response, url netUrl.URL) io.Reader
 type IBeforeSaveFileInterceptor func(job *Job)
 
+type IInterceptors struct {
+	BeforeDownload  IBeforeDownloadInterceptor
+	HttpDownloading IHttpDownloadingInterceptor
+	FtpDownloading  IFtpDownloadingInterceptor
+	BeforeSaveFile  IBeforeSaveFileInterceptor
+}
+
 type Option struct {
 	Dir                  string         // 下载路径，如果为空则使用当前目录
 	FileNamePrefix       string         // 文件名前缀，默认空
@@ -39,12 +46,21 @@ type Option struct {
 	Overwrite            bool           // 是否覆盖已存在的文件，默认false
 	Timeout              time.Duration  // 超时时间，默认10秒
 	InsecureSkipVerify   bool           // 跳过证书验证，默认false
-	Cookies              []*http.Cookie // 请求头Cookie，默认空。（使用 []http.Cookie 而不是 []*http.Cookie，避免GC问题）
+	Cookies              []*http.Cookie // 请求头Cookie，默认空。
 
-	BeforeDownloadInterceptor  IBeforeDownloadInterceptor
-	HttpDownloadingInterceptor IHttpDownloadingInterceptor
-	FtpDownloadingInterceptor  IFtpDownloadingInterceptor
-	BeforeSaveFileInterceptor  IBeforeSaveFileInterceptor
+	Interceptors IInterceptors // 拦截器
+}
+
+func (opt Option) Clone() Option {
+	// 在GO中，直接返回是值的浅拷贝，基本类型会直接拷贝，引用类型会拷贝指针
+	//
+	// Cookies 是 slice，如果需要深拷贝需要手动拷贝
+	// 参考：https://stackoverflow.com/questions/32167098/how-to-deep-copy-a-slice
+	//
+	// Interceptors 字段是一个 IInterceptors 类型的结构体，
+	// 但它的所有字段都是函数类型。函数类型在Go中不是引用类型，
+	// 它们不存储状态，因此不需要进行深拷贝。
+	return opt
 }
 
 type Downloader struct {
@@ -67,25 +83,6 @@ type Job struct {
 	_lck *sync.Mutex // 用于确保写入文件的顺序
 }
 
-func (opt Option) cloneOption() Option {
-	return Option{
-		Dir:                  opt.Dir,
-		FileNamePrefix:       opt.FileNamePrefix,
-		MaxThreads:           opt.MaxThreads,
-		MinChunkSize:         opt.MinChunkSize,
-		EnableSaveFileDialog: opt.EnableSaveFileDialog,
-		Overwrite:            opt.Overwrite,
-		Timeout:              opt.Timeout,
-		InsecureSkipVerify:   opt.InsecureSkipVerify,
-		Cookies:              opt.Cookies,
-
-		BeforeDownloadInterceptor:  opt.BeforeDownloadInterceptor,
-		HttpDownloadingInterceptor: opt.HttpDownloadingInterceptor,
-		FtpDownloadingInterceptor:  opt.FtpDownloadingInterceptor,
-		BeforeSaveFileInterceptor:  opt.BeforeSaveFileInterceptor,
-	}
-}
-
 func New(withOption ...func(*Option)) *Downloader {
 
 	// 默认参数
@@ -100,14 +97,16 @@ func New(withOption ...func(*Option)) *Downloader {
 		InsecureSkipVerify:   false,
 		Cookies:              make([]*http.Cookie, 0),
 
-		BeforeDownloadInterceptor: func(job *Job) {}, // 默认空实现
-		HttpDownloadingInterceptor: func(resp *http.Response, req *http.Request) io.Reader {
-			return resp.Body
+		Interceptors: IInterceptors{
+			BeforeDownload: func(job *Job) {}, // 默认空实现
+			HttpDownloading: func(resp *http.Response, req *http.Request) io.Reader {
+				return resp.Body
+			},
+			FtpDownloading: func(resp *ftp.Response, url netUrl.URL) io.Reader {
+				return resp
+			},
+			BeforeSaveFile: func(job *Job) {}, // 默认空实现
 		},
-		FtpDownloadingInterceptor: func(resp *ftp.Response, url netUrl.URL) io.Reader {
-			return resp
-		},
-		BeforeSaveFileInterceptor: func(job *Job) {}, // 默认空实现
 	}
 
 	for _, set := range withOption {
@@ -141,7 +140,7 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 
 	d.lastJobId++
 
-	opt := d.Option.cloneOption()
+	opt := d.Option.Clone()
 
 	for _, set := range withOption {
 		set(&opt)
@@ -261,10 +260,11 @@ func (job *Job) saveFileDialog() error {
 
 	return nil
 }
+
 func (job *Job) Download() (string, error) {
 
 	// 下载之前的拦截器
-	job.BeforeDownloadInterceptor(job)
+	job.Interceptors.BeforeDownload(job)
 
 	var err error
 	if job.isFtp {
@@ -321,7 +321,7 @@ func (job *Job) downloadFtp() error {
 	job.logDebug("登录 %s 成功，准备下载文件...", username)
 
 	// 保存文件之前的拦截器
-	job.BeforeSaveFileInterceptor(job)
+	job.Interceptors.BeforeSaveFile(job)
 
 	if job.EnableSaveFileDialog {
 		job.logDebug("准备打开文件选择对话框... TargetFile() %s", job.TargetFile())
@@ -355,7 +355,7 @@ func (job *Job) downloadFtp() error {
 	}
 	defer file.Close()
 
-	buf, err := io.ReadAll(job.FtpDownloadingInterceptor(r, *job.Url))
+	buf, err := io.ReadAll(job.Interceptors.FtpDownloading(r, *job.Url))
 	if err != nil {
 		return err
 	}
@@ -403,7 +403,7 @@ func (job *Job) downloadHttp() error {
 	job.logDebug("创建任务 %s", job.Url)
 
 	// 保存文件之前的拦截器
-	job.BeforeSaveFileInterceptor(job)
+	job.Interceptors.BeforeSaveFile(job)
 
 	if job.isSupportRange {
 		if err := job.multiThreadDownload(); err != nil {
@@ -452,11 +452,7 @@ func (job *Job) singleThreadDownload() error {
 		return err
 	}
 
-	// 检查Content-Encoding是否为deflate
-	contentEncoding := r.Header.Get("Content-Encoding")
-	fmt.Printf("Content-Encoding: %s\n", contentEncoding)
-
-	reader := job.HttpDownloadingInterceptor(r, req)
+	reader := job.Interceptors.HttpDownloading(r, req)
 	_, err = io.Copy(file, reader)
 	return err
 }
@@ -570,7 +566,7 @@ func (job *Job) downloadChunk(file *os.File, start, end uint64) error {
 		return err
 	}
 
-	reader := job.HttpDownloadingInterceptor(resp, req)
+	reader := job.Interceptors.HttpDownloading(resp, req)
 
 	// 将HTTP响应的Body内容写入到文件中
 	_, err = io.Copy(file, reader)
