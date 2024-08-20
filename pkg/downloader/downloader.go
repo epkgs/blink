@@ -425,13 +425,6 @@ func (job *Job) singleThreadDownload() error {
 
 	job.logDebug("文件将以单进程模式下载。")
 
-	// 打开文件准备写入
-	file, err := job.createTargetFile()
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
 	// 实现默认下载逻辑
 	req, err := http.NewRequest(http.MethodGet, job.Url.String(), nil)
 	if err != nil {
@@ -448,9 +441,17 @@ func (job *Job) singleThreadDownload() error {
 		job.FileName = getFileNameByResponse(r)
 	}
 
+	// 放在重构文件名后面弹出保存窗口
 	if err := job.saveFileDialog(); err != nil {
 		return err
 	}
+
+	// 打开文件准备写入，放dialog后边，避免取消保存后存在空文件
+	file, err := job.createTargetFile()
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
 	reader := job.Interceptors.HttpDownloading(r, req)
 	_, err = io.Copy(file, reader)
