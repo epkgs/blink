@@ -12,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	netUrl "net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,13 +22,16 @@ import (
 	"unsafe"
 
 	"github.com/epkgs/blink/internal/log"
+	"github.com/epkgs/blink/pkg/alert"
 	"github.com/jlaffaye/ftp"
 	"github.com/lxn/win"
 )
 
+type IDownloadChunkCallback func(res *http.Response, index uint64) error
+
 type IBeforeDownloadInterceptor func(job *Job)
-type IHttpDownloadingInterceptor func(resp *http.Response, req *http.Request) io.Reader
-type IFtpDownloadingInterceptor func(resp *ftp.Response, url netUrl.URL) io.Reader
+type IHttpDownloadingInterceptor func(job *Job, res *http.Response) io.Reader
+type IFtpDownloadingInterceptor func(job *Job, res *ftp.Response) io.Reader
 type IBeforeSaveFileInterceptor func(job *Job)
 
 type IInterceptors struct {
@@ -40,7 +44,7 @@ type IInterceptors struct {
 type Option struct {
 	Dir                  string         // 下载路径，如果为空则使用当前目录
 	FileNamePrefix       string         // 文件名前缀，默认空
-	MaxThreads           int            // 下载线程，默认4
+	MaxThreads           uint64         // 下载线程，默认5
 	MinChunkSize         uint64         // 最小分块大小，默认500KB
 	EnableSaveFileDialog bool           // 是否打开保存文件对话框，默认false
 	Overwrite            bool           // 是否覆盖已存在的文件，默认false
@@ -78,9 +82,9 @@ type Job struct {
 	FileSize       uint64
 	isSupportRange bool
 	isFtp          bool
-	httpClient     *http.Client
 
-	_lck *sync.Mutex // 用于确保写入文件的顺序
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func New(withOption ...func(*Option)) *Downloader {
@@ -89,7 +93,7 @@ func New(withOption ...func(*Option)) *Downloader {
 	opt := Option{
 		Dir:                  "",
 		FileNamePrefix:       "",
-		MaxThreads:           4,
+		MaxThreads:           5,
 		MinChunkSize:         500 * 1024, // 500KB
 		EnableSaveFileDialog: false,
 		Overwrite:            false,
@@ -99,11 +103,11 @@ func New(withOption ...func(*Option)) *Downloader {
 
 		Interceptors: IInterceptors{
 			BeforeDownload: func(job *Job) {}, // 默认空实现
-			HttpDownloading: func(resp *http.Response, req *http.Request) io.Reader {
-				return resp.Body
+			HttpDownloading: func(job *Job, res *http.Response) io.Reader {
+				return res.Body
 			},
-			FtpDownloading: func(resp *ftp.Response, url netUrl.URL) io.Reader {
-				return resp
+			FtpDownloading: func(job *Job, res *ftp.Response) io.Reader {
+				return res
 			},
 			BeforeSaveFile: func(job *Job) {}, // 默认空实现
 		},
@@ -131,8 +135,6 @@ func (d *Downloader) Download(url string, withOption ...func(*Option)) (string, 
 
 func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, error) {
 
-	log.Debug("创建下载任务：%s", url)
-
 	Url, err := netUrl.Parse(url)
 	if err != nil {
 		return nil, err
@@ -158,7 +160,11 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 		isFtp:          Url.Scheme == "ftp",
 	}
 
-	job.httpClient = job.newHttpClient()
+	if job.isFtp {
+		job.logDebug("创建FTP下载任务：%s", url)
+	} else {
+		job.logDebug("创建HTTP下载任务：%s", url)
+	}
 
 	return job, nil
 }
@@ -172,17 +178,52 @@ func (job *Job) TargetFile() string {
 	return filepath.Join(job.Dir, job.FileNamePrefix+job.FileName)
 }
 
-func (job *Job) createTargetFile() (*os.File, error) {
+func (job *Job) handleSaveFileDialog() error {
+
+	if job.EnableSaveFileDialog {
+
+		fileNameOk := false
+
+		for {
+			if fileNameOk {
+				break
+			}
+
+			path, ok := openSaveFileDialog(job.TargetFile())
+			if !ok {
+				return errors.New("用户取消保存。")
+			}
+
+			dir, fname := filepath.Split(path)
+
+			if fname == "" {
+				alert.Error("文件名不能为空")
+				continue
+			}
+
+			job.FileName = fname
+			job.Dir = dir
+			job.Overwrite = true
+
+			fileNameOk = true // 文件名正确，跳出循环
+		}
+
+	}
+
+	return nil
+}
+
+func (job *Job) getFinalTargetFile() string {
 
 	if job.Overwrite {
-		return os.Create(job.TargetFile())
+		return job.TargetFile()
 	}
 
 	original := job.TargetFile()
 	// 检查文件是否存在
 	if _, err := os.Stat(original); os.IsNotExist(err) {
 		// 文件不存在，返回新建文件
-		return os.Create(original)
+		return original
 	}
 
 	index := 1
@@ -202,7 +243,7 @@ func (job *Job) createTargetFile() (*os.File, error) {
 			job.FileName = strings.TrimPrefix(newBase, job.FileNamePrefix)
 
 			// 文件不存在，返回新建文件
-			return os.Create(job.TargetFile())
+			return job.TargetFile()
 		}
 
 		// 文件存在，增加索引并重试
@@ -211,26 +252,21 @@ func (job *Job) createTargetFile() (*os.File, error) {
 
 }
 
-func (job *Job) AvaiableTreads() int {
+func avaiableTreads(fileSize, minChunkSize, maxThreads uint64) uint64 {
 
-	// 不支持多线程下载
-	if !job.isSupportRange {
-		return 1
-	}
-
-	if job.FileSize < job.MinChunkSize {
+	if fileSize < minChunkSize {
 		return 1
 	}
 
 	// 如果最小分块大小错误，则单线程下载
-	if job.MinChunkSize <= 0 {
+	if minChunkSize <= 0 {
 		return 1
 	}
 
-	threads := int(math.Ceil(float64(job.FileSize) / float64(job.MinChunkSize)))
+	threads := uint64(math.Ceil(float64(fileSize) / float64(minChunkSize)))
 
-	if threads > job.MaxThreads {
-		return job.MaxThreads
+	if threads > maxThreads {
+		return maxThreads
 	}
 
 	if threads < 1 {
@@ -240,32 +276,80 @@ func (job *Job) AvaiableTreads() int {
 	return threads
 }
 
-func (job *Job) Download() (string, error) {
+func (job *Job) Download() (targetFile string, err error) {
+
+	job.ctx, job.cancel = context.WithCancel(context.Background())
+	defer job.cancel()
 
 	// 下载之前的拦截器
 	job.Interceptors.BeforeDownload(job)
 
-	var err error
-	if job.isFtp {
-		job.logDebug("下载FTP文件")
-		err = job.downloadFtp()
-	} else {
-		job.logDebug("下载HTTP文件")
-		err = job.downloadHttp()
-	}
+	downWait := make(chan struct{})
+	var downErr error
+	var tmpFiles []string
 
+	defer func() {
+		for _, f := range tmpFiles {
+			os.Remove(f)
+		}
+	}()
+
+	// 301 跳转会导致 head 失败
+	// 不管是否失败，都进行下载（将会使用单线程模式下载）
+	job.fetchInfo()
+
+	go func() {
+		defer close(downWait)
+
+		select {
+		case <-job.ctx.Done():
+			downErr = job.ctx.Err()
+			return
+		default:
+			if job.isFtp {
+				tmpFiles, downErr = job.downloadFtp()
+			} else {
+				if job.isSupportRange {
+					tmpFiles, downErr = job.multiThreadDownload()
+				} else {
+					tmpFiles, downErr = job.singleThreadDownload()
+				}
+			}
+		}
+	}()
+
+	// 保存文件之前的拦截器
+	job.Interceptors.BeforeSaveFile(job)
+
+	// 另存为对话框
+	err = job.handleSaveFileDialog()
 	if err != nil {
 		return "", err
 	}
 
-	targetFile := job.TargetFile()
+	// 等待下载完成
+	<-downWait
+	if downErr != nil {
+		return "", downErr
+	}
 
-	job.logDebug("下载完成， 文件路径：%s", targetFile)
+	targetFile = job.getFinalTargetFile()
 
-	return targetFile, nil
+	err = mergeFiles(tmpFiles, targetFile)
+	if err != nil {
+		os.Remove(targetFile)
+		job.logErr("将临时文件写入目标文件失败：%s", err.Error())
+		return "", err
+	}
+
+	if err == nil {
+		job.logDebug("下载完成， 文件路径：%s", targetFile)
+	}
+
+	return
 }
 
-func (job *Job) downloadFtp() error {
+func (job *Job) downloadFtp() (tmpFiles []string, err error) {
 
 	ftpHost := job.Url.Host
 
@@ -273,11 +357,13 @@ func (job *Job) downloadFtp() error {
 		ftpHost += ":21"
 	}
 
+	tmpFiles = make([]string, 0)
+
 	c, err := ftp.Dial(ftpHost, ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
 		newErr := errors.New("FTP 链接出错：" + err.Error())
 		job.logErr(newErr.Error())
-		return newErr
+		return tmpFiles, newErr
 	}
 
 	job.logDebug("链接 %s 成功，准备登录...", ftpHost)
@@ -294,57 +380,36 @@ func (job *Job) downloadFtp() error {
 	if err != nil {
 		newErr := errors.New("FTP 登录出错：" + err.Error())
 		job.logErr(newErr.Error())
-		return newErr
+		return tmpFiles, newErr
 	}
 
 	job.logDebug("登录 %s 成功，准备下载文件...", username)
 
-	// 保存文件之前的拦截器
-	job.Interceptors.BeforeSaveFile(job)
-
-	if job.EnableSaveFileDialog {
-		job.logDebug("准备打开文件选择对话框... TargetFile() %s", job.TargetFile())
-		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
-			dir, file := filepath.Split(path)
-			job.FileName = file
-			job.Dir = dir
-			job.Overwrite = true
-		} else {
-			job.logDebug("用户取消保存。")
-			return nil
-		}
-	}
-
-	if job.FileName == "" {
-		return errors.New("文件名不能为空！")
-	}
-
-	job.logDebug("创建任务 %s", job.Url.String())
-
-	r, err := c.Retr(job.Url.Path)
+	res, err := c.Retr(job.Url.Path)
 	if err != nil {
-		return err
+		return tmpFiles, err
 	}
-	defer r.Close()
+	defer res.Close()
 
-	// 打开文件准备写入
-	file, err := job.createTargetFile()
+	// 准备临时文件
+	file, err := job.getTempFile()
 	if err != nil {
-		return err
+		return tmpFiles, err
 	}
 	defer file.Close()
+	tmpFiles = append(tmpFiles, file.Name())
 
-	buf, err := io.ReadAll(job.Interceptors.FtpDownloading(r, *job.Url))
+	buf, err := io.ReadAll(job.Interceptors.FtpDownloading(job, res))
 	if err != nil {
-		return err
+		return tmpFiles, err
 	}
 
 	_, err = file.Write(buf)
 
-	return err
+	return tmpFiles, nil
 }
 
-func (job *Job) newHttpClient() *http.Client {
+func (job *Job) sentRequest(req *http.Request) (*http.Response, error) {
 
 	// 创建一个cookie jar
 	jar, err := cookiejar.New(nil)
@@ -367,133 +432,143 @@ func (job *Job) newHttpClient() *http.Client {
 	client := &http.Client{
 		Transport: tr,
 		Jar:       jar,
-		Timeout:   job.Timeout,
+		// Timeout:   job.Timeout,
 	}
 
-	return client
+	return client.Do(req)
 }
 
-func (job *Job) downloadHttp() error {
+func (job *Job) getTempFile() (*os.File, error) {
 
-	// 301 跳转会导致 head 失败
-	// 不管是否失败，都进行下载（将会使用单线程模式下载）
-	job.fetchInfo()
-
-	job.logDebug("创建任务 %s", job.Url)
-
-	// 保存文件之前的拦截器
-	job.Interceptors.BeforeSaveFile(job)
-
-	if job.EnableSaveFileDialog {
-
-		if path, ok := openSaveFileDialog(job.TargetFile()); ok {
-			dir, file := filepath.Split(path)
-			job.FileName = file
-			job.Dir = dir
-			job.Overwrite = true
-		} else {
-			job.logDebug("用户取消保存。")
-			return errors.New("用户取消保存。")
-		}
+	dir := path.Join(os.TempDir(), "mini-blink")
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return nil, err
 	}
-
-	if job.FileName == "" || !strings.Contains(job.FileName, ".") {
-		job.logDebug("文件名不正确: %s", job.FileName)
-		return errors.New("文件名不正确。")
-	}
-
-	if job.isSupportRange {
-
-		if err := job.multiThreadDownload(); err != nil {
-			job.logErr(err.Error())
-			return err
-		}
-	} else {
-		if err := job.singleThreadDownload(); err != nil {
-			job.logErr(err.Error())
-			return err
-		}
-	}
-
-	job.logDebug("下载完成：%s", job.TargetFile())
-	return nil
+	return os.CreateTemp(dir, "download_*.tmp")
 }
 
-func (job *Job) singleThreadDownload() error {
+// 单线程下载。返回下载后的临时文件，写入字节数，错误
+func (job *Job) singleThreadDownload() (tmpFiles []string, err error) {
 
 	job.logDebug("文件将以单进程模式下载。")
 
-	// 打开文件准备写入
-	file, err := job.createTargetFile()
+	tmpFiles = make([]string, 0)
+
+	// 准备临时文件
+	file, err := job.getTempFile()
 	if err != nil {
-		return err
+		return tmpFiles, err
 	}
 	defer file.Close()
+	tmpFiles = append(tmpFiles, file.Name())
 
 	// 实现默认下载逻辑
-	req, err := http.NewRequest(http.MethodGet, job.Url.String(), nil)
+	req, err := http.NewRequestWithContext(job.ctx, http.MethodGet, job.Url.String(), nil)
 	if err != nil {
-		return err
+		return tmpFiles, err
 	}
-	r, err := job.httpClient.Do(req)
+	res, err := job.sentRequest(req)
 	if err != nil {
-		return err
+		return tmpFiles, err
 	}
-	defer r.Body.Close()
+	defer res.Body.Close()
 
-	reader := job.Interceptors.HttpDownloading(r, req)
+	reader := job.Interceptors.HttpDownloading(job, res)
+
+	job.logDebug("[ 单进程 ] 下载到临时文件 %s", tmpFiles[0])
+
 	_, err = io.Copy(file, reader)
-	return err
+	return tmpFiles, err
 }
 
-func (job *Job) multiThreadDownload() error {
+// 多线程下载。返回下载后的临时文件，写入字节数，错误
+func (job *Job) multiThreadDownload() (tmpFiles []string, err error) {
 
-	theads := job.AvaiableTreads()
+	// 如果文件大小为 0，则以 range 获取前 2 个字节，用来获取文件大小
+	if job.FileSize <= 0 {
+		job.logDebug("文件大小为 0，尝试以 Range 获取文件大小...")
+		err = func() error {
+			req, err := http.NewRequestWithContext(job.ctx, http.MethodGet, job.Url.String(), nil)
+			if err != nil {
+				return err
+			}
+
+			// 设置Range头实现断点续传，仅获取 2 个字节，用来获取文件大小
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", 0, 1))
+
+			res, err := job.sentRequest(req)
+			if err != nil {
+				return err
+			}
+			defer res.Body.Close()
+
+			// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
+			// 获取文件总大小
+			contentRange := res.Header.Get("Content-Range")
+			crs := strings.Split(contentRange, "/")
+			if len(crs) != 2 || crs[1] == "*" {
+				return errors.New("获取文件总大小失败，多进程下载失败！")
+			}
+
+			if size, err := strconv.ParseUint(crs[1], 10, 64); err != nil {
+				return err
+			} else {
+				job.FileSize = size
+			}
+
+			return nil
+		}()
+
+		if err != nil {
+			return
+		}
+	}
+
+	theads := avaiableTreads(job.FileSize, job.MinChunkSize, job.MaxThreads)
 	job.logDebug("文件将以多线程进行下载，线程：%d", theads)
 
-	// 打开文件准备写入
-	file, err := job.createTargetFile()
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+	tmpFiles = make([]string, theads)
 
 	var wg sync.WaitGroup
-	var ctx, cancel = context.WithCancel(context.Background())
 	var errs []error
 	var errLock sync.Mutex
-
-	defer cancel() // 取消所有goroutine
 
 	// 计算每个线程的分块大小
 	chunkSize := uint64(math.Ceil(float64(job.FileSize) / float64(theads)))
 
-	for i := 0; i < theads; i++ {
-		start := uint64(i) * chunkSize
+	var idx uint64
+	for idx = 0; idx < theads; idx++ {
+		start := idx * chunkSize
 		end := start + chunkSize - 1
 
-		// 如果是最后一个部分，加上余数
-		if i == theads-1 {
+		// 如果是最后一个部分，end 为文件末端
+		if idx == theads-1 {
 			end = job.FileSize - 1
 		}
 
 		wg.Add(1)
 
-		go func(index int) {
+		go func(index uint64) {
 			defer wg.Done()
 
 			retry := 0
 			for {
 				select {
-				case <-ctx.Done():
+				case <-job.ctx.Done():
 					// 如果收到取消信号，直接返回
 					return
 				default:
 					// 尝试下载分块
-					err := job.downloadChunk(file, start, end)
-
+					fname, err := job.downloadChunk(index, start, end, func(res *http.Response, index uint64) error {
+						// 检查服务器是否支持Range请求
+						if res.StatusCode != http.StatusPartialContent {
+							return errors.New("server doesn't support Range requests")
+						}
+						return nil
+					})
 					if err == nil {
-						job.logDebug("切片 %d 下载完成", index+1)
+						tmpFiles[index] = fname
 						return
 					}
 
@@ -502,110 +577,113 @@ func (job *Job) multiThreadDownload() error {
 						errLock.Lock()
 						errs = append(errs, err)
 						errLock.Unlock()
-						cancel() // 取消所有goroutine
+						job.cancel() // 取消所有goroutine
 						return
 					}
 
 					retry++
 				}
 			}
-		}(i)
+		}(idx)
 	}
 
 	wg.Wait() // 等待所有goroutine完成
 
 	if len(errs) > 0 {
-		return errs[0] // 返回第一个遇到的错误
+		return tmpFiles, errs[0] // 返回第一个遇到的错误
 	}
 
-	return nil
+	return tmpFiles, nil
 }
 
-// downloadChunk 下载文件的单个分块
-func (job *Job) downloadChunk(file *os.File, start, end uint64) error {
+// 下载文件的单个分块，带回调函数
+func (job *Job) downloadChunk(index, start, end uint64, callbacks ...IDownloadChunkCallback) (tmpFile string, err error) {
 
-	req, err := http.NewRequest("GET", job.Url.String(), nil)
+	req, err := http.NewRequestWithContext(job.ctx, http.MethodGet, job.Url.String(), nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// 设置Range头实现断点续传
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
-	resp, err := job.httpClient.Do(req)
+	res, err := job.sentRequest(req)
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	// 检查服务器是否支持Range请求
-	if resp.StatusCode != http.StatusPartialContent {
-		return errors.New("server doesn't support Range requests")
-	}
+	for _, callback := range callbacks {
 
-	// 锁定互斥锁以安全地写入文件
-	job._lck.Lock()
-	defer job._lck.Unlock()
-
-	// 写入文件的当前位置
-	if _, err = file.Seek(int64(start), io.SeekStart); err != nil {
-		return err
+		if err := callback(res, index); err != nil {
+			return "", err
+		}
 	}
 
-	reader := job.Interceptors.HttpDownloading(resp, req)
+	reader := job.Interceptors.HttpDownloading(job, res)
+
+	// 准备临时文件
+	file, err := job.getTempFile()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	tmpFile = file.Name()
+
+	job.logDebug("[ 线程 %d ] 下载到临时文件 %s", index+1, tmpFile)
 
 	// 将HTTP响应的Body内容写入到文件中
 	_, err = io.Copy(file, reader)
-	return err
+	return tmpFile, err
 }
 
 func (job *Job) fetchInfo() {
 
-	req, err := http.NewRequest("HEAD", job.Url.String(), nil)
+	// HEAD 请求有可能不返回 Content-Length 头，导致无法多线程下载
+	req, err := http.NewRequestWithContext(job.ctx, http.MethodHead, job.Url.String(), nil)
 	if err != nil {
 		job.logErr("创建 fetchInfo HEAD 请求失败： %s", err.Error())
 		return
 	}
 
-	r, err := job.httpClient.Do(req)
+	res, err := job.sentRequest(req)
 	if err != nil {
 		job.logErr("fetchInfo 失败： %s", err.Error())
 		return
 	}
-	defer r.Body.Close()
+	res.Body.Close()
 
-	if r.StatusCode == 404 {
+	if res.StatusCode == 404 {
 		job.logErr("文件不存在(404)： %s")
 		return
 	}
 
-	if r.StatusCode > 299 {
-		job.logErr("连接出错(%d)： %s", r.StatusCode, job.Url.String())
+	if res.StatusCode > 299 {
+		job.logErr("连接出错(%d)： %s", res.StatusCode, job.Url.String())
 		return
 	}
 
 	// 获取文件名
-	job.FileName = getFileNameByResponse(r)
+	job.FileName = getFileNameByResponse(res)
 
 	// 检查是否支持 断点续传
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
-	if r.Header.Get("Accept-Ranges") == "bytes" {
+	if res.Header.Get("Accept-Ranges") == "bytes" {
 		job.isSupportRange = true
 	}
 
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
 	// 获取文件总大小
-	contentLength, err := strconv.ParseUint(r.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		job.isSupportRange = false
+	if contentLength, err := strconv.ParseUint(res.Header.Get("Content-Length"), 10, 64); err != nil {
 		job.FileSize = 0
 		return
+	} else {
+		job.FileSize = contentLength
 	}
 
-	job.FileSize = contentLength
 }
 
-func getFileNameByResponse(resp *http.Response) string {
-	contentDisposition := resp.Header.Get("Content-Disposition")
+func getFileNameByResponse(res *http.Response) string {
+	contentDisposition := res.Header.Get("Content-Disposition")
 	if contentDisposition != "" {
 		_, params, err := mime.ParseMediaType(contentDisposition)
 
@@ -619,7 +697,7 @@ func getFileNameByResponse(resp *http.Response) string {
 		}
 
 	}
-	return filepath.Base(resp.Request.URL.Path)
+	return filepath.Base(res.Request.URL.Path)
 }
 
 func openSaveFileDialog(filePath string) (filepath string, ok bool) {
@@ -656,6 +734,37 @@ func (job *Job) logDebug(tpl string, vars ...interface{}) {
 }
 
 func (job *Job) logErr(tpl string, vars ...interface{}) {
-
 	log.Error(fmt.Sprintf("[下载任务 %d ]: ", job.id)+tpl, vars...)
+}
+
+// mergeFiles 实现跨卷/分区移动文件
+func mergeFiles(sourcePaths []string, destPath string) error {
+
+	outputFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("Couldn't open dest file: %s", err)
+	}
+	defer outputFile.Close()
+
+	for _, sourcePath := range sourcePaths {
+
+		err := func() error {
+			inputFile, err := os.Open(sourcePath)
+			if err != nil {
+				return fmt.Errorf("Couldn't open source file: %s", err)
+			}
+			defer inputFile.Close()
+
+			_, err = io.Copy(outputFile, inputFile)
+			if err != nil {
+				return fmt.Errorf("Writing to output file failed: %s", err)
+			}
+			return nil
+		}()
+
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
