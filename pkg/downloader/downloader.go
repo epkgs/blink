@@ -51,6 +51,18 @@ type Option struct {
 	Interceptors IInterceptors // 拦截器
 }
 
+func (opt Option) Clone() Option {
+	// 在GO中，直接返回是值的浅拷贝，基本类型会直接拷贝，引用类型会拷贝指针
+	//
+	// Cookies 是 slice，如果需要深拷贝需要手动拷贝
+	// 参考：https://stackoverflow.com/questions/32167098/how-to-deep-copy-a-slice
+	//
+	// Interceptors 字段是一个 IInterceptors 类型的结构体，
+	// 但它的所有字段都是函数类型。函数类型在Go中不是引用类型，
+	// 它们不存储状态，因此不需要进行深拷贝。
+	return opt
+}
+
 type Downloader struct {
 	lastJobId uint64
 	Option
@@ -69,27 +81,6 @@ type Job struct {
 	httpClient     *http.Client
 
 	_lck *sync.Mutex // 用于确保写入文件的顺序
-}
-
-func (opt Option) cloneOption() Option {
-	return Option{
-		Dir:                  opt.Dir,
-		FileNamePrefix:       opt.FileNamePrefix,
-		MaxThreads:           opt.MaxThreads,
-		MinChunkSize:         opt.MinChunkSize,
-		EnableSaveFileDialog: opt.EnableSaveFileDialog,
-		Overwrite:            opt.Overwrite,
-		Timeout:              opt.Timeout,
-		InsecureSkipVerify:   opt.InsecureSkipVerify,
-		Cookies:              opt.Cookies,
-
-		Interceptors: IInterceptors{
-			BeforeDownload:  opt.Interceptors.BeforeDownload,
-			HttpDownloading: opt.Interceptors.HttpDownloading,
-			FtpDownloading:  opt.Interceptors.FtpDownloading,
-			BeforeSaveFile:  opt.Interceptors.BeforeSaveFile,
-		},
-	}
 }
 
 func New(withOption ...func(*Option)) *Downloader {
@@ -149,7 +140,7 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 
 	d.lastJobId++
 
-	opt := d.Option.cloneOption()
+	opt := d.Option.Clone()
 
 	for _, set := range withOption {
 		set(&opt)
