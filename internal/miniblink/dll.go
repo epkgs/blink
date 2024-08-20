@@ -1,6 +1,7 @@
 package miniblink
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -11,8 +12,20 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func LoadDLL(dllFile, tempPath string) (*windows.DLL, error) {
+func compareDllHash(dllFile string) bool {
+	file, err := os.ReadFile(dllFile)
+	if err != nil {
+		// 文件不存在则返回false
+		return false
+	}
 
+	// 计算文件的SHA-256哈希值
+	hash := sha256.Sum256(file)
+	sha256Str := fmt.Sprintf("%x", hash)
+
+	return DllSHA256 == sha256Str
+}
+func LoadDLL(dllFile, tempPath string) (*windows.DLL, error) {
 	// 尝试直接从默认目录里加载 DLL
 	if loaded, err := windows.LoadDLL(dllFile); err == nil {
 		log.Debug("直接加载DLL: %s", dllFile)
@@ -22,13 +35,15 @@ func LoadDLL(dllFile, tempPath string) (*windows.DLL, error) {
 	dir := filepath.Join(tempPath, fmt.Sprintf("miniblink_%s_%s", VERSION, ARCH))
 	releaseFile := filepath.Join(dir, dllFile)
 
-	// 尝试直接加载释放后的 DLL
-	if loaded, err := windows.LoadDLL(releaseFile); err == nil {
-		log.Debug("直接加载DLL: %s", releaseFile)
-		return loaded, nil
+	// 对比dll的hash，判断dll是否完整，不完整则重新释放dll
+	log.Debug("dllFile: %s", dllFile)
+	if compareDllHash(releaseFile) {
+		// 尝试直接加载释放后的 DLL
+		if loaded, err := windows.LoadDLL(releaseFile); err == nil {
+			log.Debug("直接加载DLL: %s", releaseFile)
+			return loaded, nil
+		}
 	}
-
-	// 没有找到释放后的 DLL，则尝试从内嵌资源里释放
 
 	// 临时文件夹不存在，则创建
 	if err := os.MkdirAll(dir, 0755); err != nil {
