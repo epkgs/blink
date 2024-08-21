@@ -455,26 +455,15 @@ func (job *Job) getInfoByResponse(res *http.Response) {
 }
 
 // 多线程下载。返回下载后的临时文件和错误
-func (job *Job) downloadHttp() (tmpFiles []string, err error) {
+func (job *Job) downloadHttp() ([]string, error) {
 
+	var downloadErr error
 	chunkStart := uint64(0)
 	chunkEnd := job.MinChunkSize - 1
-	tmpFiles = make([]string, 1) // 预初始化为1个元素的数组
+	tmpFiles := make([]string, 1) // 预初始化为1个元素的数组
 
 	ctx, cancel := context.WithCancel(job.ctx)
-
-	downResult := make(chan error, 1)
-	go func() {
-		rst := <-downResult
-		if rst != nil {
-			err = rst
-			job.logErr(err.Error())
-			cancel()
-		}
-	}()
-	cancelWithErr := func(err error) {
-		downResult <- err
-	}
+	defer cancel()
 
 	var wg sync.WaitGroup
 
@@ -483,8 +472,7 @@ func (job *Job) downloadHttp() (tmpFiles []string, err error) {
 		defer wg.Done()
 
 		// 尝试用多线程下载的方式，以最小切片大小第一部分
-		var fname string
-		fname, err = job.downloadChunk(ctx, 0, fmt.Sprintf("%d-%d", chunkStart, chunkEnd), func(res *http.Response, index uint64) error {
+		fname, err := job.downloadChunk(ctx, 0, fmt.Sprintf("%d-%d", chunkStart, chunkEnd), func(res *http.Response, index uint64) error {
 
 			// 获取文件信息
 			job.getInfoByResponse(res)
@@ -499,7 +487,8 @@ func (job *Job) downloadHttp() (tmpFiles []string, err error) {
 				job.Interceptors.BeforeSaveFile(job)
 
 				if err := job.handleSaveFileDialog(); err != nil {
-					cancelWithErr(fmt.Errorf("保存文件失败：%s", err.Error()))
+					downloadErr = fmt.Errorf("保存文件失败：%s", err.Error())
+					cancel()
 				}
 
 			}()
@@ -517,7 +506,9 @@ func (job *Job) downloadHttp() (tmpFiles []string, err error) {
 						defer wg.Done()
 						fname2, err := job.downloadChunk(ctx, 1, fmt.Sprintf("%d-", chunkEnd+1))
 						if err != nil {
-							cancelWithErr(fmt.Errorf("下载失败：%s", err.Error()))
+							downloadErr = fmt.Errorf("下载失败：%s", err.Error())
+							cancel()
+							return
 						}
 						tmpFiles[1] = fname2
 					}()
@@ -574,7 +565,8 @@ func (job *Job) downloadHttp() (tmpFiles []string, err error) {
 
 										// 如果重试超过3次，记录错误并触发取消操作
 										if retry >= 3 {
-											cancelWithErr(err)
+											downloadErr = err
+											cancel()
 											return
 										}
 									}
@@ -591,13 +583,19 @@ func (job *Job) downloadHttp() (tmpFiles []string, err error) {
 		})
 
 		tmpFiles[0] = fname // 等待结束再赋值，因为 callback 内部会重新初始化 tmpFiles
+
+		if err != nil {
+			downloadErr = err
+			cancel()
+		}
+
 	}()
 
 	wg.Wait() // 等待所有下载子线程完成
 
-	if err != nil {
-		job.logErr(err.Error())
-		return nil, err
+	if downloadErr != nil {
+		job.logErr(downloadErr.Error())
+		return nil, downloadErr
 	}
 
 	return tmpFiles, nil
