@@ -12,10 +12,6 @@ func strToWcharPtr(s string) *uint16 {
 	return ptr
 }
 
-func messageBox(hwnd uintptr, title, content string, flag uint32) int32 {
-	return win.MessageBox(win.HWND(hwnd), strToWcharPtr(content), strToWcharPtr(title), flag)
-}
-
 func pick(defaultTitle string, titleOrContent string, contents ...string) (title string, content string) {
 	if len(contents) == 0 {
 		return defaultTitle, titleOrContent
@@ -24,17 +20,19 @@ func pick(defaultTitle string, titleOrContent string, contents ...string) (title
 	}
 }
 
+func Alert(flag uint32, titleOrContent string, contents ...string) int32 {
+	title, content := pick("注意", titleOrContent, contents...)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), flag|win.MB_OK|win.MB_TOPMOST)
+}
+
 func Error(titleOrContent string, contents ...string) int32 {
-	title, content := pick("错误", titleOrContent, contents...)
-	return messageBox(0, title, content, win.MB_OK|win.MB_ICONERROR)
+	return Alert(win.MB_ICONERROR, titleOrContent, contents...)
 }
 
 func Info(titleOrContent string, contents ...string) int32 {
-	title, content := pick("提示", titleOrContent, contents...)
-	return messageBox(0, title, content, win.MB_OK|win.MB_ICONINFORMATION)
+	return Alert(win.MB_ICONINFORMATION, titleOrContent, contents...)
 }
 
 func Warning(titleOrContent string, contents ...string) int32 {
-	title, content := pick("警告", titleOrContent, contents...)
-	return messageBox(0, title, content, win.MB_OK|win.MB_ICONWARNING)
+	return Alert(win.MB_ICONWARNING, titleOrContent, contents...)
 }
