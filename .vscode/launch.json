@@ -10,7 +10,9 @@
       "request": "launch",
       "mode": "auto",
       "buildFlags": ["-tags", "debug"],
-      "cwd": "${workspaceFolder}",
+      "dlvFlags": ["--check-go-version=false"],
+      // "cwd": "${workspaceFolder}",
+      "cwd": "${fileDirname}",
       "program": "${fileDirname}"
     }
   ]
