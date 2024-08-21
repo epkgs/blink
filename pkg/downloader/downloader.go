@@ -42,15 +42,17 @@ type IInterceptors struct {
 }
 
 type Option struct {
-	Dir                  string         // 下载路径，如果为空则使用当前目录
-	FileNamePrefix       string         // 文件名前缀，默认空
-	MaxThreads           uint64         // 下载线程，默认5
-	MinChunkSize         uint64         // 最小分块大小，默认500KB
-	EnableSaveFileDialog bool           // 是否打开保存文件对话框，默认false
-	Overwrite            bool           // 是否覆盖已存在的文件，默认false
-	Timeout              time.Duration  // 超时时间，默认10秒
-	InsecureSkipVerify   bool           // 跳过证书验证，默认false
-	Cookies              []*http.Cookie // 请求头Cookie，默认空。
+	Dir            string // 下载路径，如果为空则使用当前目录
+	FileNamePrefix string // 文件名前缀，默认空
+	MaxThreads     uint64 // 下载线程，默认5
+	MinChunkSize   uint64 // 最小分块大小，默认500KB
+
+	Timeout time.Duration  // 超时时间，默认10秒
+	Cookies []*http.Cookie // 请求头Cookie，默认空。
+
+	EnableSaveFileDialog bool // 是否打开保存文件对话框，默认false
+	OverwriteFile        bool // 是否覆盖已存在的文件，默认false
+	InsecureSkipVerify   bool // 跳过证书验证，默认false
 
 	Interceptors IInterceptors // 拦截器
 }
@@ -91,15 +93,17 @@ func New(withOption ...func(*Option)) *Downloader {
 
 	// 默认参数
 	opt := Option{
-		Dir:                  "",
-		FileNamePrefix:       "",
-		MaxThreads:           5,
-		MinChunkSize:         500 * 1024, // 500KB
+		Dir:            "",
+		FileNamePrefix: "",
+		MaxThreads:     5,
+		MinChunkSize:   500 * 1024, // 500KB
+
+		Timeout: 10 * time.Second,
+		Cookies: make([]*http.Cookie, 0),
+
 		EnableSaveFileDialog: false,
-		Overwrite:            false,
-		Timeout:              10 * time.Second,
+		OverwriteFile:        false,
 		InsecureSkipVerify:   false,
-		Cookies:              make([]*http.Cookie, 0),
 
 		Interceptors: IInterceptors{
 			BeforeDownload: func(job *Job) {}, // 默认空实现
@@ -196,14 +200,14 @@ func (job *Job) handleSaveFileDialog() error {
 
 			dir, fname := filepath.Split(path)
 
-			if fname == "" {
+			if strings.TrimSpace(fname) == "" {
 				alert.Error("文件名不能为空")
 				continue
 			}
 
 			job.FileName = fname
 			job.Dir = dir
-			job.Overwrite = true
+			job.OverwriteFile = true
 
 			fileNameOk = true // 文件名正确，跳出循环
 		}
@@ -215,7 +219,7 @@ func (job *Job) handleSaveFileDialog() error {
 
 func (job *Job) getFinalTargetFile() string {
 
-	if job.Overwrite {
+	if job.OverwriteFile {
 		return job.TargetFile()
 	}
 
@@ -284,8 +288,6 @@ func (job *Job) Download() (targetFile string, err error) {
 	// 下载之前的拦截器
 	job.Interceptors.BeforeDownload(job)
 
-	downWait := make(chan struct{})
-	var downErr error
 	var tmpFiles []string
 
 	defer func() {
@@ -294,43 +296,15 @@ func (job *Job) Download() (targetFile string, err error) {
 		}
 	}()
 
-	// 301 跳转会导致 head 失败
-	// 不管是否失败，都进行下载（将会使用单线程模式下载）
-	job.fetchInfo()
-
-	go func() {
-		defer close(downWait)
-
-		select {
-		case <-job.ctx.Done():
-			downErr = job.ctx.Err()
-			return
-		default:
-			if job.isFtp {
-				tmpFiles, downErr = job.downloadFtp()
-			} else {
-				if job.isSupportRange {
-					tmpFiles, downErr = job.multiThreadDownload()
-				} else {
-					tmpFiles, downErr = job.singleThreadDownload()
-				}
-			}
-		}
-	}()
-
-	// 保存文件之前的拦截器
-	job.Interceptors.BeforeSaveFile(job)
-
-	// 另存为对话框
-	err = job.handleSaveFileDialog()
-	if err != nil {
-		return "", err
+	if job.isFtp {
+		tmpFiles, err = job.downloadFtp()
+	} else {
+		tmpFiles, err = job.downloadHttp()
 	}
 
 	// 等待下载完成
-	<-downWait
-	if downErr != nil {
-		return "", downErr
+	if err != nil {
+		return "", err
 	}
 
 	targetFile = job.getFinalTargetFile()
@@ -346,7 +320,7 @@ func (job *Job) Download() (targetFile string, err error) {
 		job.logDebug("下载完成， 文件路径：%s", targetFile)
 	}
 
-	return
+	return targetFile, err
 }
 
 func (job *Job) downloadFtp() (tmpFiles []string, err error) {
@@ -448,169 +422,207 @@ func (job *Job) getTempFile() (*os.File, error) {
 	return os.CreateTemp(dir, "download_*.tmp")
 }
 
-// 单线程下载。返回下载后的临时文件，写入字节数，错误
-func (job *Job) singleThreadDownload() (tmpFiles []string, err error) {
+func (job *Job) getInfoByResponse(res *http.Response) {
 
-	job.logDebug("文件将以单进程模式下载。")
+	// 获取文件名
+	job.FileName = getFileNameByResponse(res)
 
-	tmpFiles = make([]string, 0)
-
-	// 准备临时文件
-	file, err := job.getTempFile()
-	if err != nil {
-		return tmpFiles, err
+	// 检查是否支持 断点续传
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
+	if res.Header.Get("Accept-Ranges") == "bytes" {
+		job.isSupportRange = true
 	}
-	defer file.Close()
-	tmpFiles = append(tmpFiles, file.Name())
 
-	// 实现默认下载逻辑
-	req, err := http.NewRequestWithContext(job.ctx, http.MethodGet, job.Url.String(), nil)
-	if err != nil {
-		return tmpFiles, err
+	// 通过 Content-Range 获取文件大小
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
+	contentRange := res.Header.Get("Content-Range")
+	if contentRange != "" {
+		crs := strings.Split(contentRange, "/")
+		if len(crs) == 2 && crs[1] != "*" {
+
+			if size, err := strconv.ParseUint(crs[1], 10, 64); err == nil {
+				job.FileSize = size
+			}
+		}
+	} else {
+
+		// 当未设置 Content-Rnage 时，使用 Content-Length 获取文件总大小
+		// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
+		if contentLength, err := strconv.ParseUint(res.Header.Get("Content-Length"), 10, 64); err == nil {
+			job.FileSize = contentLength
+		}
 	}
-	res, err := job.sentRequest(req)
-	if err != nil {
-		return tmpFiles, err
-	}
-	defer res.Body.Close()
-
-	reader := job.Interceptors.HttpDownloading(job, res)
-
-	job.logDebug("[ 单进程 ] 下载到临时文件 %s", tmpFiles[0])
-
-	_, err = io.Copy(file, reader)
-	return tmpFiles, err
 }
 
-// 多线程下载。返回下载后的临时文件，写入字节数，错误
-func (job *Job) multiThreadDownload() (tmpFiles []string, err error) {
+// 多线程下载。返回下载后的临时文件和错误
+func (job *Job) downloadHttp() (tmpFiles []string, err error) {
 
-	// 如果文件大小为 0，则以 range 获取前 2 个字节，用来获取文件大小
-	if job.FileSize <= 0 {
-		job.logDebug("文件大小为 0，尝试以 Range 获取文件大小...")
-		err = func() error {
-			req, err := http.NewRequestWithContext(job.ctx, http.MethodGet, job.Url.String(), nil)
-			if err != nil {
-				return err
-			}
+	chunkStart := uint64(0)
+	chunkEnd := job.MinChunkSize - 1
+	tmpFiles = make([]string, 1) // 预初始化为1个元素的数组
 
-			// 设置Range头实现断点续传，仅获取 2 个字节，用来获取文件大小
-			req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", 0, 1))
+	ctx, cancel := context.WithCancel(job.ctx)
 
-			res, err := job.sentRequest(req)
-			if err != nil {
-				return err
-			}
-			defer res.Body.Close()
+	downResult := make(chan error, 1)
+	go func() {
+		rst := <-downResult
+		if rst != nil {
+			err = rst
+			job.logErr(err.Error())
+			cancel()
+		}
+	}()
+	cancelWithErr := func(err error) {
+		downResult <- err
+	}
 
-			// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
-			// 获取文件总大小
-			contentRange := res.Header.Get("Content-Range")
-			crs := strings.Split(contentRange, "/")
-			if len(crs) != 2 || crs[1] == "*" {
-				return errors.New("获取文件总大小失败，多进程下载失败！")
-			}
+	var wg sync.WaitGroup
 
-			if size, err := strconv.ParseUint(crs[1], 10, 64); err != nil {
-				return err
-			} else {
-				job.FileSize = size
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		// 尝试用多线程下载的方式，以最小切片大小第一部分
+		var fname string
+		fname, err = job.downloadChunk(ctx, 0, fmt.Sprintf("%d-%d", chunkStart, chunkEnd), func(res *http.Response, index uint64) error {
+
+			// 获取文件信息
+			job.getInfoByResponse(res)
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				// 使用协程处理另存为窗体，使其不阻塞下载
+
+				// 保存文件之前的拦截器
+				job.Interceptors.BeforeSaveFile(job)
+
+				if err := job.handleSaveFileDialog(); err != nil {
+					cancelWithErr(fmt.Errorf("保存文件失败：%s", err.Error()))
+				}
+
+			}()
+
+			// 如果返回的状态码为 206，则表示服务器支持断点续传，需要继续下载剩余部分
+			if res.StatusCode == http.StatusPartialContent {
+				if job.FileSize == 0 {
+
+					// 支持断点续传，但无法获取到文件大小，则再加一个线程下载完剩余的部分
+					job.logDebug("服务器支持断点续传，但无法获取文件大小，将以新进程继续下载剩余部分")
+
+					tmpFiles = make([]string, 2)
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						fname2, err := job.downloadChunk(ctx, 1, fmt.Sprintf("%d-", chunkEnd+1))
+						if err != nil {
+							cancelWithErr(fmt.Errorf("下载失败：%s", err.Error()))
+						}
+						tmpFiles[1] = fname2
+					}()
+				} else {
+					// 支持断点续传，且获取到文件大小，计算可用线程数
+					remainSize := job.FileSize - chunkEnd - 1 // 剩余大小
+					remainTheads := avaiableTreads(
+						remainSize, // 剩余大小
+						job.MinChunkSize,
+						job.MaxThreads-1, // 扣除已使用的线程数
+					)
+					theads := remainTheads + 1
+
+					job.logDebug("服务器支持断点续传，文件将以多线程继续下载，线程：%d，文件大小：%d", theads, job.FileSize)
+
+					tmpFiles = make([]string, theads)
+
+					// 循环发起剩余下载请求部分，使用协程，不阻塞第一个下载进程
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+
+						// 计算每个线程的分块大小
+						chunkSize := uint64(math.Ceil(float64(remainSize) / float64(remainTheads)))
+
+						for idx := uint64(1); idx < theads; idx++ {
+							chunkStart = chunkEnd + 1
+							chunkEnd = chunkStart + chunkSize - 1
+
+							// 如果是最后一个部分，end 为文件末端
+							if idx == theads-1 {
+								chunkEnd = job.FileSize - 1
+							}
+
+							wg.Add(1)
+							go func(index uint64) {
+								defer wg.Done()
+
+								retry := 0
+								for {
+									select {
+									case <-ctx.Done():
+										// 如果收到取消信号，直接返回
+										return
+									default:
+										retry++
+
+										// 尝试下载分块
+										fname, err := job.downloadChunk(ctx, index, fmt.Sprintf("%d-%d", chunkStart, chunkEnd))
+										if err == nil {
+											tmpFiles[index] = fname
+											return
+										}
+
+										// 如果重试超过3次，记录错误并触发取消操作
+										if retry >= 3 {
+											cancelWithErr(err)
+											return
+										}
+									}
+								}
+							}(idx)
+						}
+
+					}()
+
+				}
 			}
 
 			return nil
-		}()
+		})
 
-		if err != nil {
-			return
-		}
-	}
+		tmpFiles[0] = fname // 等待结束再赋值，因为 callback 内部会重新初始化 tmpFiles
+	}()
 
-	theads := avaiableTreads(job.FileSize, job.MinChunkSize, job.MaxThreads)
-	job.logDebug("文件将以多线程进行下载，线程：%d", theads)
+	wg.Wait() // 等待所有下载子线程完成
 
-	tmpFiles = make([]string, theads)
-
-	var wg sync.WaitGroup
-	var errs []error
-	var errLock sync.Mutex
-
-	// 计算每个线程的分块大小
-	chunkSize := uint64(math.Ceil(float64(job.FileSize) / float64(theads)))
-
-	var idx uint64
-	for idx = 0; idx < theads; idx++ {
-		start := idx * chunkSize
-		end := start + chunkSize - 1
-
-		// 如果是最后一个部分，end 为文件末端
-		if idx == theads-1 {
-			end = job.FileSize - 1
-		}
-
-		wg.Add(1)
-
-		go func(index uint64) {
-			defer wg.Done()
-
-			retry := 0
-			for {
-				select {
-				case <-job.ctx.Done():
-					// 如果收到取消信号，直接返回
-					return
-				default:
-					// 尝试下载分块
-					fname, err := job.downloadChunk(index, start, end, func(res *http.Response, index uint64) error {
-						// 检查服务器是否支持Range请求
-						if res.StatusCode != http.StatusPartialContent {
-							return errors.New("server doesn't support Range requests")
-						}
-						return nil
-					})
-					if err == nil {
-						tmpFiles[index] = fname
-						return
-					}
-
-					// 如果重试超过3次，记录错误并触发取消操作
-					if retry >= 3 {
-						errLock.Lock()
-						errs = append(errs, err)
-						errLock.Unlock()
-						job.cancel() // 取消所有goroutine
-						return
-					}
-
-					retry++
-				}
-			}
-		}(idx)
-	}
-
-	wg.Wait() // 等待所有goroutine完成
-
-	if len(errs) > 0 {
-		return tmpFiles, errs[0] // 返回第一个遇到的错误
+	if err != nil {
+		job.logErr(err.Error())
+		return nil, err
 	}
 
 	return tmpFiles, nil
 }
 
 // 下载文件的单个分块，带回调函数
-func (job *Job) downloadChunk(index, start, end uint64, callbacks ...IDownloadChunkCallback) (tmpFile string, err error) {
+func (job *Job) downloadChunk(ctx context.Context, index uint64, byteRange string, callbacks ...IDownloadChunkCallback) (tmpFile string, err error) {
 
-	req, err := http.NewRequestWithContext(job.ctx, http.MethodGet, job.Url.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, job.Url.String(), nil)
 	if err != nil {
 		return "", err
 	}
 
 	// 设置Range头实现断点续传
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+	req.Header.Set("Range", fmt.Sprintf("bytes=%s", byteRange))
+
 	res, err := job.sentRequest(req)
 	if err != nil {
 		return "", err
 	}
 	defer res.Body.Close()
+
+	if res.StatusCode >= 400 && res.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+		return "", fmt.Errorf("下载失败，服务器返回错误状态码：%d", res.StatusCode)
+	}
 
 	for _, callback := range callbacks {
 
@@ -634,52 +646,6 @@ func (job *Job) downloadChunk(index, start, end uint64, callbacks ...IDownloadCh
 	// 将HTTP响应的Body内容写入到文件中
 	_, err = io.Copy(file, reader)
 	return tmpFile, err
-}
-
-func (job *Job) fetchInfo() {
-
-	// HEAD 请求有可能不返回 Content-Length 头，导致无法多线程下载
-	req, err := http.NewRequestWithContext(job.ctx, http.MethodHead, job.Url.String(), nil)
-	if err != nil {
-		job.logErr("创建 fetchInfo HEAD 请求失败： %s", err.Error())
-		return
-	}
-
-	res, err := job.sentRequest(req)
-	if err != nil {
-		job.logErr("fetchInfo 失败： %s", err.Error())
-		return
-	}
-	res.Body.Close()
-
-	if res.StatusCode == 404 {
-		job.logErr("文件不存在(404)： %s")
-		return
-	}
-
-	if res.StatusCode > 299 {
-		job.logErr("连接出错(%d)： %s", res.StatusCode, job.Url.String())
-		return
-	}
-
-	// 获取文件名
-	job.FileName = getFileNameByResponse(res)
-
-	// 检查是否支持 断点续传
-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
-	if res.Header.Get("Accept-Ranges") == "bytes" {
-		job.isSupportRange = true
-	}
-
-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
-	// 获取文件总大小
-	if contentLength, err := strconv.ParseUint(res.Header.Get("Content-Length"), 10, 64); err != nil {
-		job.FileSize = 0
-		return
-	} else {
-		job.FileSize = contentLength
-	}
-
 }
 
 func getFileNameByResponse(res *http.Response) string {
