@@ -26,13 +26,16 @@ func Alert(flag uint32, titleOrContent string, contents ...string) int32 {
 }
 
 func Error(titleOrContent string, contents ...string) int32 {
-	return Alert(win.MB_ICONERROR, titleOrContent, contents...)
+	title, content := pick("错误", titleOrContent, contents...)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONERROR|win.MB_OK|win.MB_TOPMOST)
 }
 
 func Info(titleOrContent string, contents ...string) int32 {
-	return Alert(win.MB_ICONINFORMATION, titleOrContent, contents...)
+	title, content := pick("提示", titleOrContent, contents...)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONINFORMATION|win.MB_OK|win.MB_TOPMOST)
 }
 
 func Warning(titleOrContent string, contents ...string) int32 {
-	return Alert(win.MB_ICONWARNING, titleOrContent, contents...)
+	title, content := pick("警告", titleOrContent, contents...)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONWARNING|win.MB_OK|win.MB_TOPMOST)
 }
