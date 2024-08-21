@@ -164,11 +164,7 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 		isFtp:          Url.Scheme == "ftp",
 	}
 
-	if job.isFtp {
-		job.logDebug("创建FTP下载任务：%s", url)
-	} else {
-		job.logDebug("创建HTTP下载任务：%s", url)
-	}
+	job.ctx, job.cancel = context.WithCancel(context.Background())
 
 	return job, nil
 }
@@ -282,7 +278,6 @@ func avaiableTreads(fileSize, minChunkSize, maxThreads uint64) uint64 {
 
 func (job *Job) Download() (targetFile string, err error) {
 
-	job.ctx, job.cancel = context.WithCancel(context.Background())
 	defer job.cancel()
 
 	// 下载之前的拦截器
@@ -297,8 +292,10 @@ func (job *Job) Download() (targetFile string, err error) {
 	}()
 
 	if job.isFtp {
+		job.logDebug("创建FTP下载任务：%s", job.Url.String())
 		tmpFiles, err = job.downloadFtp()
 	} else {
+		job.logDebug("创建HTTP下载任务：%s", job.Url.String())
 		tmpFiles, err = job.downloadHttp()
 	}
 
@@ -333,7 +330,7 @@ func (job *Job) downloadFtp() (tmpFiles []string, err error) {
 
 	tmpFiles = make([]string, 0)
 
-	c, err := ftp.Dial(ftpHost, ftp.DialWithContext(job.ctx), ftp.DialWithTimeout(5*time.Second))
+	c, err := ftp.Dial(ftpHost, ftp.DialWithContext(job.ctx), ftp.DialWithTimeout(job.Timeout))
 	if err != nil {
 		newErr := errors.New("FTP 链接出错：" + err.Error())
 		job.logErr(newErr.Error())
