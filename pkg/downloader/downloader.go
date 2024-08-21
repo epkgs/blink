@@ -333,7 +333,7 @@ func (job *Job) downloadFtp() (tmpFiles []string, err error) {
 
 	tmpFiles = make([]string, 0)
 
-	c, err := ftp.Dial(ftpHost, ftp.DialWithTimeout(5*time.Second))
+	c, err := ftp.Dial(ftpHost, ftp.DialWithContext(job.ctx), ftp.DialWithTimeout(5*time.Second))
 	if err != nil {
 		newErr := errors.New("FTP 链接出错：" + err.Error())
 		job.logErr(newErr.Error())
