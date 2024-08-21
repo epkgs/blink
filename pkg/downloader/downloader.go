@@ -468,7 +468,7 @@ func (job *Job) downloadHttp() ([]string, error) {
 	go func() {
 		defer wg.Done()
 
-		// 尝试用多线程下载的方式，以最小切片大小第一部分
+		// 尝试用多线程下载的方式，以最小切片大小下载第一部分
 		fname, err := job.downloadChunk(ctx, 0, fmt.Sprintf("%d-%d", chunkStart, chunkEnd), func(res *http.Response, index uint64) error {
 
 			// 获取文件信息
@@ -478,7 +478,7 @@ func (job *Job) downloadHttp() ([]string, error) {
 			go func() {
 				defer wg.Done()
 
-				// 使用协程处理另存为窗体，使其不阻塞下载
+				// 使用协程处理另存为选择框，使其不阻塞下载
 
 				// 保存文件之前的拦截器
 				job.Interceptors.BeforeSaveFile(job)
