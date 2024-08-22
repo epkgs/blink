@@ -70,13 +70,16 @@ func (conf Config) Clone() Config {
 }
 
 type Downloader struct {
-	lastJobId uint64
 	Config
+
+	lastJobId uint64
+	ctx       context.Context
 }
 
 type Job struct {
-	downloader *Downloader
 	Config
+
+	downloader *Downloader
 
 	id             uint64
 	Url            *netUrl.URL
@@ -90,6 +93,10 @@ type Job struct {
 }
 
 func New(withConfig ...func(*Config)) *Downloader {
+	return NewWithContext(context.Background(), withConfig...)
+}
+
+func NewWithContext(ctx context.Context, withConfig ...func(*Config)) *Downloader {
 
 	// 默认参数
 	defaultOption := Config{
@@ -120,6 +127,8 @@ func New(withConfig ...func(*Config)) *Downloader {
 	downloader := &Downloader{
 		lastJobId: 0,
 		Config:    defaultOption,
+
+		ctx: ctx,
 	}
 
 	return downloader.WithConfig(withConfig...)
@@ -169,7 +178,7 @@ func (d *Downloader) newJob(url string, withConfig ...func(*Config)) (*Job, erro
 		isFtp:          Url.Scheme == "ftp",
 	}
 
-	job.ctx, job.cancel = context.WithCancel(context.Background())
+	job.ctx, job.cancel = context.WithCancel(d.ctx)
 
 	return job, nil
 }
