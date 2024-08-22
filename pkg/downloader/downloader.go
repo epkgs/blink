@@ -143,6 +143,11 @@ func (d *Downloader) WithConfig(withConfig ...func(*Config)) *Downloader {
 	return d
 }
 
+func (d *Downloader) WithContext(ctx context.Context) *Downloader {
+	d.ctx = ctx
+	return d
+}
+
 func (d *Downloader) Download(url string, withConfig ...func(*Config)) (targetFile string, err error) {
 	job, err := d.newJob(url, withConfig...)
 	if err != nil {
