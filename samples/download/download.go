@@ -22,8 +22,8 @@ func main() {
 	_, _ = app.Download("https://httpbin.org/robots.txt")
 
 	// deflate压缩内容下载
-	_, _ = app.Download("https://comment.bilibili.com/177987845.xml", func(o *downloader.Option) {
-		o.Interceptors.HttpDownloading = func(job *downloader.Job, res *http.Response) io.Reader {
+	_, _ = app.Download("https://comment.bilibili.com/177987845.xml", func(c *downloader.Config) {
+		c.Interceptors.HttpDownloading = func(job *downloader.Job, res *http.Response) io.Reader {
 			// 检查Content-Encoding是否为deflate
 			contentEncoding := res.Header.Get("Content-Encoding")
 			if contentEncoding == "deflate" {
@@ -37,8 +37,8 @@ func main() {
 	})
 
 	// 保存文件之前修改文件名
-	_, _ = app.Download("https://httpbin.org/image", func(o *downloader.Option) {
-		o.Interceptors.BeforeSaveFile = func(job *downloader.Job) {
+	_, _ = app.Download("https://httpbin.org/image", func(c *downloader.Config) {
+		c.Interceptors.BeforeSaveFile = func(job *downloader.Job) {
 			// 修改文件名
 			job.FileName += ".png"
 		}

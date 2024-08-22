@@ -41,7 +41,7 @@ type IInterceptors struct {
 	BeforeSaveFile  IBeforeSaveFileInterceptor
 }
 
-type Option struct {
+type Config struct {
 	Dir            string // 下载路径，如果为空则使用当前目录
 	FileNamePrefix string // 文件名前缀，默认空
 	MaxThreads     uint64 // 下载线程，默认5
@@ -57,7 +57,7 @@ type Option struct {
 	Interceptors IInterceptors // 拦截器
 }
 
-func (opt Option) Clone() Option {
+func (conf Config) Clone() Config {
 	// 在GO中，直接返回是值的浅拷贝，基本类型会直接拷贝，引用类型会拷贝指针
 	//
 	// Cookies 是 slice，如果需要深拷贝需要手动拷贝
@@ -66,17 +66,17 @@ func (opt Option) Clone() Option {
 	// Interceptors 字段是一个 IInterceptors 类型的结构体，
 	// 但它的所有字段都是函数类型。函数类型在Go中不是引用类型，
 	// 它们不存储状态，因此不需要进行深拷贝。
-	return opt
+	return conf
 }
 
 type Downloader struct {
 	lastJobId uint64
-	Option
+	Config
 }
 
 type Job struct {
 	downloader *Downloader
-	Option
+	Config
 
 	id             uint64
 	Url            *netUrl.URL
@@ -89,10 +89,10 @@ type Job struct {
 	cancel context.CancelFunc
 }
 
-func New(withOption ...func(*Option)) *Downloader {
+func New(withConfig ...func(*Config)) *Downloader {
 
 	// 默认参数
-	opt := Option{
+	defaultOption := Config{
 		Dir:            "",
 		FileNamePrefix: "",
 		MaxThreads:     5,
@@ -117,27 +117,32 @@ func New(withOption ...func(*Option)) *Downloader {
 		},
 	}
 
-	for _, set := range withOption {
-		set(&opt)
-	}
-
 	downloader := &Downloader{
 		lastJobId: 0,
-		Option:    opt,
+		Config:    defaultOption,
 	}
 
-	return downloader
+	return downloader.WithConfig(withConfig...)
 }
 
-func (d *Downloader) Download(url string, withOption ...func(*Option)) (targetFile string, err error) {
-	job, err := d.NewJob(url, withOption...)
+// 修改 Downloader 的默认参数
+func (d *Downloader) WithConfig(withConfig ...func(*Config)) *Downloader {
+	for _, set := range withConfig {
+		set(&d.Config)
+	}
+
+	return d
+}
+
+func (d *Downloader) Download(url string, withConfig ...func(*Config)) (targetFile string, err error) {
+	job, err := d.newJob(url, withConfig...)
 	if err != nil {
 		return "", err
 	}
-	return job.Download()
+	return job.download()
 }
 
-func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, error) {
+func (d *Downloader) newJob(url string, withConfig ...func(*Config)) (*Job, error) {
 
 	Url, err := netUrl.Parse(url)
 	if err != nil {
@@ -146,15 +151,15 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 
 	d.lastJobId++
 
-	opt := d.Option.Clone()
+	conf := d.Config.Clone()
 
-	for _, set := range withOption {
-		set(&opt)
+	for _, set := range withConfig {
+		set(&conf)
 	}
 
 	job := &Job{
 		downloader: d,
-		Option:     opt,
+		Config:     conf,
 
 		id:             d.lastJobId,
 		Url:            Url,
@@ -169,7 +174,7 @@ func (d *Downloader) NewJob(url string, withOption ...func(*Option)) (*Job, erro
 	return job, nil
 }
 
-func (job *Job) TargetFile() string {
+func (job *Job) targetFile() string {
 
 	if filepath.IsAbs(job.FileName) {
 		return job.FileName
@@ -189,7 +194,7 @@ func (job *Job) handleSaveFileDialog() error {
 				break
 			}
 
-			path, ok := openSaveFileDialog(job.TargetFile())
+			path, ok := openSaveFileDialog(job.targetFile())
 			if !ok {
 				return errors.New("用户取消保存。")
 			}
@@ -216,10 +221,10 @@ func (job *Job) handleSaveFileDialog() error {
 func (job *Job) getFinalTargetFile() string {
 
 	if job.OverwriteFile {
-		return job.TargetFile()
+		return job.targetFile()
 	}
 
-	original := job.TargetFile()
+	original := job.targetFile()
 	// 检查文件是否存在
 	if _, err := os.Stat(original); os.IsNotExist(err) {
 		// 文件不存在，返回新建文件
@@ -243,7 +248,7 @@ func (job *Job) getFinalTargetFile() string {
 			job.FileName = strings.TrimPrefix(newBase, job.FileNamePrefix)
 
 			// 文件不存在，返回新建文件
-			return job.TargetFile()
+			return job.targetFile()
 		}
 
 		// 文件存在，增加索引并重试
@@ -276,7 +281,7 @@ func avaiableTreads(fileSize, minChunkSize, maxThreads uint64) uint64 {
 	return threads
 }
 
-func (job *Job) Download() (targetFile string, err error) {
+func (job *Job) download() (targetFile string, err error) {
 
 	defer job.cancel()
 
