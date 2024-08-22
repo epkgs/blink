@@ -129,7 +129,7 @@ func New(withOption ...func(*Option)) *Downloader {
 	return downloader
 }
 
-func (d *Downloader) Download(url string, withOption ...func(*Option)) (string, error) {
+func (d *Downloader) Download(url string, withOption ...func(*Option)) (targetFile string, err error) {
 	job, err := d.NewJob(url, withOption...)
 	if err != nil {
 		return "", err

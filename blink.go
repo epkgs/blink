@@ -459,6 +459,6 @@ func (mb *Blink) GetCookies() ([]*http.Cookie, error) {
 }
 
 // alias， 缩短代码
-func (mb *Blink) Download(url string, withOption ...func(*downloader.Option)) (string, error) {
+func (mb *Blink) Download(url string, withOption ...func(*downloader.Option)) (targetFile string, err error) {
 	return mb.Downloader.Download(url, withOption...)
 }
