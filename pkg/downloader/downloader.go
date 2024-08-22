@@ -322,6 +322,16 @@ func (job *Job) Download() (targetFile string, err error) {
 
 func (job *Job) downloadFtp() (tmpFiles []string, err error) {
 
+	defer func() {
+		if err != nil {
+			// 下载失败，清理临时文件
+			for _, f := range tmpFiles {
+				os.Remove(f)
+			}
+			tmpFiles = nil
+		}
+	}()
+
 	ftpHost := job.Url.Host
 
 	if job.Url.Port() == "" {
@@ -452,12 +462,22 @@ func (job *Job) getInfoByResponse(res *http.Response) {
 }
 
 // 多线程下载。返回下载后的临时文件和错误
-func (job *Job) downloadHttp() ([]string, error) {
+func (job *Job) downloadHttp() (tmpFiles []string, downloadErr error) {
 
-	var downloadErr error
+	defer func() {
+		if downloadErr != nil {
+			job.logErr(downloadErr.Error())
+			// 下载失败，清理临时文件
+			for _, f := range tmpFiles {
+				os.Remove(f)
+			}
+			tmpFiles = nil
+		}
+	}()
+
 	chunkStart := uint64(0)
 	chunkEnd := job.MinChunkSize - 1
-	tmpFiles := make([]string, 1) // 预初始化为1个元素的数组
+	tmpFiles = make([]string, 1) // 预初始化为1个元素的数组
 
 	ctx, cancel := context.WithCancel(job.ctx)
 	defer cancel()
@@ -590,12 +610,7 @@ func (job *Job) downloadHttp() ([]string, error) {
 
 	wg.Wait() // 等待所有下载子线程完成
 
-	if downloadErr != nil {
-		job.logErr(downloadErr.Error())
-		return nil, downloadErr
-	}
-
-	return tmpFiles, nil
+	return tmpFiles, downloadErr
 }
 
 // 下载文件的单个分块，带回调函数
