@@ -1,0 +1,11 @@
+{
+    "go.useLanguageServer": true, // if this is true, needs gopls/analyses flag.
+    "go.vetFlags": [
+        "-unsafeptr=false"
+    ],
+    "gopls": {
+        "analyses": {
+            "unsafeptr": false,
+        }
+    }
+}
