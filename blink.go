@@ -130,7 +130,7 @@ func (mb *Blink) Free() {
 
 	close(mb.quit) // quit 退出任务循环，须等待上面任务完成才能退出任务循环
 
-	mb.dll.Release()
+	_ = mb.dll.Release()
 	mb = nil
 }
 
@@ -345,11 +345,11 @@ func (mb *Blink) VersionString() string {
 }
 
 func (mb *Blink) initialize() {
-	mb.CallFunc("wkeInitialize")
+	_, _, _ = mb.CallFunc("wkeInitialize")
 }
 
 func (mb *Blink) finalize() {
-	mb.CallFunc("wkeFinalize")
+	_, _, _ = mb.CallFunc("wkeFinalize")
 }
 
 func (mb *Blink) isInitialize() bool {
@@ -415,7 +415,7 @@ func (mb *Blink) CreateWebWindowControl(parent *View, withConfig ...WithWebWindo
 
 // 设置response的mime
 func (mb *Blink) NetSetMIMEType(job WkeNetJob, mimeType string) {
-	mb.CallFunc("wkeNetSetMIMEType", uintptr(job), StringToPtr(mimeType))
+	_, _, _ = mb.CallFunc("wkeNetSetMIMEType", uintptr(job), StringToPtr(mimeType))
 }
 
 // 获取response的mime
@@ -432,11 +432,11 @@ func (mb *Blink) NetSetData(job WkeNetJob, buf []byte) {
 		buf = []byte{0}
 	}
 
-	mb.CallFunc("wkeNetSetData", uintptr(job), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	_, _, _ = mb.CallFunc("wkeNetSetData", uintptr(job), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 }
 
 func (mb *Blink) NetHookRequest(job WkeNetJob) {
-	mb.CallFunc("wkeNetHookRequest", uintptr(job))
+	_, _, _ = mb.CallFunc("wkeNetHookRequest", uintptr(job))
 }
 
 func (mb *Blink) GetViewByJsExecState(es JsExecState) (view *View, exist bool) {

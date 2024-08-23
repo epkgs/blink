@@ -9,7 +9,7 @@ import (
 func (v *View) ShowDevTools(devtoolsCallbacks ...func(devtools *View)) {
 
 	if !v.mb.Resource.IsExist("__devtools__") {
-		v.mb.Resource.Bind("__devtools__", devtools.FS)
+		_ = v.mb.Resource.Bind("__devtools__", devtools.FS)
 	}
 
 	var callback WkeOnShowDevtoolsCallback = func(hwnd WkeHandle, param uintptr) uintptr {
@@ -26,6 +26,5 @@ func (v *View) ShowDevTools(devtoolsCallbacks ...func(devtools *View)) {
 
 		return 0
 	}
-
-	v.mb.CallFunc("wkeShowDevtools", uintptr(v.Hwnd), StringToWCharPtr("http://__devtools__/inspector.html"), CallbackToPtr(callback), 0)
+	_, _, _ = v.mb.CallFunc("wkeShowDevtools", uintptr(v.Hwnd), StringToWCharPtr("http://__devtools__/inspector.html"), CallbackToPtr(callback), 0)
 }

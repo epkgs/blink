@@ -401,10 +401,7 @@ func BoolToByte(b bool) byte {
 }
 
 func ByteToBool(b byte) bool {
-	if b == 1 {
-		return true
-	}
-	return false
+	return b == 1
 }
 
 // 将map[string]interface{}转换为结构体

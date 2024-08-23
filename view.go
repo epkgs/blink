@@ -104,7 +104,7 @@ func NewView(mb *Blink, hwnd WkeHandle, windowType WkeWindowType, parent ...*Vie
 
 	// 添加默认下载操作
 	view.OnDownload(func(url string) {
-		mb.Download(url)
+		_, _ = mb.Download(url)
 	})
 
 	return view
@@ -167,7 +167,7 @@ func (v *View) CloseWindow() {
 // 销毁wkeWebView对应的所有数据结构，包括真实窗口等
 func (v *View) DestroyWindow() {
 	// v.Window.Destroy()
-	v.mb.CallFunc("wkeDestroyWebWindow", uintptr(v.Hwnd))
+	_, _, _ = v.mb.CallFunc("wkeDestroyWebWindow", uintptr(v.Hwnd))
 }
 
 func (v *View) Reload() bool {
@@ -180,7 +180,7 @@ func (v *View) ForceReload() {
 }
 
 func (v *View) LoadURL(url string) {
-	v.mb.CallFunc("wkeLoadURL", uintptr(v.Hwnd), StringToPtr(url))
+	_, _, _ = v.mb.CallFunc("wkeLoadURL", uintptr(v.Hwnd), StringToPtr(url))
 }
 
 func (v *View) GetURL() string {
@@ -191,12 +191,12 @@ func (v *View) GetURL() string {
 // 设置local storage的全路径。如“c:\mb\LocalStorage\”
 // 注意：这个接口只能接受目录。
 func (v *View) SetLocalStorageFullPath(path string) {
-	v.mb.CallFunc("wkeSetLocalStorageFullPath", uintptr(v.Hwnd), StringToWCharPtr(path))
+	_, _, _ = v.mb.CallFunc("wkeSetLocalStorageFullPath", uintptr(v.Hwnd), StringToWCharPtr(path))
 }
 
 // 设置cookie的全路径+文件名，如“c:\mb\cookie.dat”
 func (v *View) SetCookieJarFullPath(path string) {
-	v.mb.CallFunc("wkeSetCookieJarFullPath", uintptr(v.Hwnd), StringToWCharPtr(path))
+	_, _, _ = v.mb.CallFunc("wkeSetCookieJarFullPath", uintptr(v.Hwnd), StringToWCharPtr(path))
 }
 
 func (v *View) GetWindowHandle() WkeHandle {
@@ -205,7 +205,7 @@ func (v *View) GetWindowHandle() WkeHandle {
 }
 
 func (v *View) Resize(width, height int32) {
-	v.mb.CallFunc("wkeResize", uintptr(v.Hwnd), uintptr(width), uintptr(height))
+	_, _, _ = v.mb.CallFunc("wkeResize", uintptr(v.Hwnd), uintptr(width), uintptr(height))
 }
 
 func (v *View) registerFileSystem() {
@@ -249,7 +249,7 @@ func (v *View) OnClosing(callback OnClosingCallback) (stop func()) {
 			}
 			return BoolToPtr(true)
 		}
-		v.mb.CallFunc("wkeOnWindowClosing", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnWindowClosing", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 	})
 
 	key := utils.RandString(10)
@@ -272,7 +272,7 @@ func (v *View) OnDestroy(callback OnDestroyCallback) (stop func()) {
 			}
 			return
 		}
-		v.mb.CallFunc("wkeOnWindowDestroy", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnWindowDestroy", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 	})
 
 	key := utils.RandString(10)
@@ -299,7 +299,7 @@ func (v *View) OnLoadUrlBegin(callback OnLoadUrlBeginCallback) (stop func()) {
 			return 0 // 返回 false 的 uintptr
 		}
 
-		v.mb.CallFunc("wkeOnLoadUrlBegin", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnLoadUrlBegin", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 	})
 
 	key := utils.RandString(10)
@@ -324,7 +324,7 @@ func (v *View) OnLoadUrlEnd(callback OnLoadUrlEndCallback) (stop func()) {
 			}
 			return 0
 		}
-		v.mb.CallFunc("wkeOnLoadUrlEnd", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnLoadUrlEnd", uintptr(v.Hwnd), CallbackToPtr(handler), 0)
 	})
 
 	key := utils.RandString(10)
@@ -347,7 +347,7 @@ func (v *View) OnDocumentReady(callback OnDocumentReadyCallback) (stop func()) {
 
 			return 0
 		}
-		v.mb.CallFunc("wkeOnDocumentReady2", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnDocumentReady2", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
 	key := utils.RandString(10)
@@ -432,7 +432,7 @@ func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallbac
 			}
 			return 0
 		}
-		v.mb.CallFunc("wkeOnDidCreateScriptContext", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnDidCreateScriptContext", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
 	key := utils.RandString(8)
@@ -452,7 +452,7 @@ func (v *View) OnWillReleaseScriptContext(callback OnWillReleaseScriptContextCal
 			return 0
 		}
 
-		v.mb.CallFunc("wkeOnWillReleaseScriptContext", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnWillReleaseScriptContext", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
 	key := utils.RandString(8)
@@ -615,7 +615,7 @@ func (v *View) OnConsole(callback OnConsoleCallback) (stop func()) {
 			return 0
 		}
 
-		v.mb.CallFunc("wkeOnConsole", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnConsole", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
 	key := utils.RandString(10)
@@ -669,7 +669,7 @@ func (v *View) OnTitleChanged(callback OnTitleChangedCallback) (stop func()) {
 			return
 		}
 
-		v.mb.CallFunc("wkeOnTitleChanged", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnTitleChanged", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
 	key := utils.RandString(10)
@@ -693,7 +693,7 @@ func (v *View) OnDownload(callback OnDownloadCallback) (stop func()) {
 			return
 		}
 
-		v.mb.CallFunc("wkeOnDownload", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnDownload", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
 	// key := utils.RandString(10)
@@ -811,7 +811,7 @@ func (v *View) SetHeadlessEnabled(enable bool) *CallFuncJob {
 }
 
 func (v *View) SetTransparent(transparent bool) {
-	v.mb.CallFunc("wkeSetTransparent", uintptr(v.Hwnd), BoolToPtr(transparent))
+	_, _, _ = v.mb.CallFunc("wkeSetTransparent", uintptr(v.Hwnd), BoolToPtr(transparent))
 }
 
 func (v *View) OnOtherLoad(callback OnOtherLoadCallback) (stop func()) {
@@ -823,7 +823,7 @@ func (v *View) OnOtherLoad(callback OnOtherLoadCallback) (stop func()) {
 			return
 		}
 
-		v.mb.CallFunc("wkeOnOtherLoad", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
+		_, _, _ = v.mb.CallFunc("wkeOnOtherLoad", uintptr(v.Hwnd), CallbackToPtr(cb), 0)
 	})
 
 	key := utils.RandString(10)

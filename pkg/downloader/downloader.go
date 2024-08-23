@@ -376,7 +376,10 @@ func (job *Job) downloadFtp() (tmpFiles []string, err error) {
 	}
 
 	err = c.Login(username, password)
-	defer c.Quit()
+	defer func() {
+		_ = c.Quit()
+	}()
+
 	if err != nil {
 		newErr := errors.New("FTP 登录出错：" + err.Error())
 		job.logErr(newErr.Error())

@@ -437,8 +437,8 @@ func (w *Window) showSimpleTrayMenu() {
 		}
 		defer win.DestroyMenu(hMenu)
 
-		appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_RESTORE, StringToWCharPtr("显示窗口"))
-		appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_EXIT, StringToWCharPtr("退出"))
+		_, _, _ = appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_RESTORE, StringToWCharPtr("显示窗口"))
+		_, _, _ = appendMenu.Call(uintptr(hMenu), win.MF_STRING, ID_TRAYMENU_EXIT, StringToWCharPtr("退出"))
 
 		var pt win.POINT
 		win.GetCursorPos(&pt)
@@ -539,7 +539,7 @@ func (w *Window) loadIconFromFile(iconFilePath string) (iconHandle win.HANDLE, e
 }
 
 func (w *Window) MoveToCenter() {
-	w.mb.CallFunc("wkeMoveToCenter", uintptr(w.view.Hwnd))
+	_, _, _ = w.mb.CallFunc("wkeMoveToCenter", uintptr(w.view.Hwnd))
 }
 
 func (w *Window) SetTitle(title string) {
@@ -547,7 +547,7 @@ func (w *Window) SetTitle(title string) {
 	w.setTitle(title)
 }
 func (w *Window) setTitle(title string) {
-	w.mb.CallFunc("wkeSetWindowTitle", uintptr(w.view.Hwnd), StringToPtr(title))
+	_, _, _ = w.mb.CallFunc("wkeSetWindowTitle", uintptr(w.view.Hwnd), StringToPtr(title))
 }
 
 // 开启边缘拖动大小功能

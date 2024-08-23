@@ -29,7 +29,7 @@ func (js *JS) bindFunction(funcName string, funcArgCount uint32, callback BindFu
 
 		return 0
 	}
-	js.mb.CallFunc("wkeJsBindFunction", StringToPtr(funcName), CallbackToPtr(cb), 0, uintptr(funcArgCount))
+	_, _, _ = js.mb.CallFunc("wkeJsBindFunction", StringToPtr(funcName), CallbackToPtr(cb), 0, uintptr(funcArgCount))
 }
 
 // 获取页面主frame的jsExecState
@@ -104,7 +104,7 @@ func (js *JS) Get(es JsExecState, object JsValue, prop string) JsValue {
 // 设置object的属性
 func (js *JS) Set(es JsExecState, object JsValue, prop string, value JsValue) {
 
-	js.mb.CallFunc("jsSet", uintptr(es), uintptr(object), StringToPtr(prop), uintptr(value))
+	_, _, _ = js.mb.CallFunc("jsSet", uintptr(es), uintptr(object), StringToPtr(prop), uintptr(value))
 }
 
 // 获取window上的属性
@@ -118,7 +118,7 @@ func (js *JS) GetGlobal(es JsExecState, prop string) JsValue {
 // 设置window上的属性
 func (js *JS) SetGlobal(es JsExecState, prop string, value JsValue) {
 
-	js.mb.CallFunc("jsSetGlobal", uintptr(es), StringToPtr(prop), uintptr(value))
+	_, _, _ = js.mb.CallFunc("jsSetGlobal", uintptr(es), StringToPtr(prop), uintptr(value))
 }
 
 // 设置js arrary的第index个成员的值，object必须是js array才有用，否则会返回nil
@@ -130,7 +130,7 @@ func (js *JS) GetAt(es JsExecState, object JsValue, index uint32) JsValue {
 // 设置js arrary的第index个成员的值，object必须是js array才有用。
 func (js *JS) SetAt(es JsExecState, object JsValue, index uint32, value JsValue) {
 
-	js.mb.CallFunc("jsSetAt", uintptr(es), uintptr(object), uintptr(index), uintptr(value))
+	_, _, _ = js.mb.CallFunc("jsSetAt", uintptr(es), uintptr(object), uintptr(index), uintptr(value))
 }
 
 // 获取object有哪些key
@@ -168,7 +168,7 @@ func (js *JS) GetLength(es JsExecState, object JsValue) int {
 }
 
 func (js *JS) SetLength(es JsExecState, object JsValue, length uint32) {
-	js.mb.CallFunc("jsSetLength", uintptr(es), uintptr(object), uintptr(length))
+	_, _, _ = js.mb.CallFunc("jsSetLength", uintptr(es), uintptr(object), uintptr(length))
 }
 
 func (js *JS) ToDouble(es JsExecState, value JsValue) float64 {
