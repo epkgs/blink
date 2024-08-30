@@ -451,38 +451,6 @@ func (job *Job) getTempFile() (*os.File, error) {
 	return os.CreateTemp(dir, "download_*.tmp")
 }
 
-func (job *Job) getInfoByResponse(res *http.Response) {
-
-	// 获取文件名
-	job.FileName = getFileNameByResponse(res)
-
-	// 检查是否支持 断点续传
-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
-	if res.Header.Get("Accept-Ranges") == "bytes" {
-		job.isSupportRange = true
-	}
-
-	// 通过 Content-Range 获取文件大小
-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
-	contentRange := res.Header.Get("Content-Range")
-	if contentRange != "" {
-		crs := strings.Split(contentRange, "/")
-		if len(crs) == 2 && crs[1] != "*" {
-
-			if size, err := strconv.ParseUint(crs[1], 10, 64); err == nil {
-				job.FileSize = size
-			}
-		}
-	} else {
-
-		// 当未设置 Content-Rnage 时，使用 Content-Length 获取文件总大小
-		// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
-		if contentLength, err := strconv.ParseUint(res.Header.Get("Content-Length"), 10, 64); err == nil {
-			job.FileSize = contentLength
-		}
-	}
-}
-
 // 多线程下载。返回下载后的临时文件和错误
 func (job *Job) downloadHttp() (tmpFiles []string, downloadErr error) {
 
@@ -513,8 +481,33 @@ func (job *Job) downloadHttp() (tmpFiles []string, downloadErr error) {
 		// 尝试用多线程下载的方式，以最小切片大小下载第一部分
 		fname, err := job.downloadChunk(ctx, 0, fmt.Sprintf("%d-%d", chunkStart, chunkEnd), func(res *http.Response, index uint64) error {
 
-			// 获取文件信息
-			job.getInfoByResponse(res)
+			// 获取文件名
+			job.FileName = getFileNameByResponse(res)
+
+			// 检查是否支持 断点续传
+			// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Ranges
+			if res.Header.Get("Accept-Ranges") == "bytes" {
+				job.isSupportRange = true
+			}
+
+			// 通过 Content-Range 获取文件大小
+			// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
+			contentRange := res.Header.Get("Content-Range")
+			if contentRange != "" {
+				crs := strings.Split(contentRange, "/")
+				if len(crs) == 2 && crs[1] != "*" {
+					if size, err := strconv.ParseUint(crs[1], 10, 64); err == nil {
+						job.FileSize = size
+					}
+				}
+			} else {
+
+				// 当未设置 Content-Rnage 时，使用 Content-Length 获取文件总大小
+				// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Length
+				if contentLength, err := strconv.ParseUint(res.Header.Get("Content-Length"), 10, 64); err == nil {
+					job.FileSize = contentLength
+				}
+			}
 
 			wg.Add(1)
 			go func() {
@@ -551,7 +544,7 @@ func (job *Job) downloadHttp() (tmpFiles []string, downloadErr error) {
 						}
 						tmpFiles[1] = fname2
 					}()
-				} else {
+				} else if job.FileSize > job.MinChunkSize {
 					// 支持断点续传，且获取到文件大小，计算可用线程数
 					remainSize := job.FileSize - chunkEnd - 1 // 剩余大小
 					remainTheads := avaiableTreads(
