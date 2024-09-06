@@ -284,6 +284,7 @@ func (v *View) OnDestroy(callback OnDestroyCallback) (stop func()) {
 	}
 }
 
+// callback 返回 true 则中断、阻止后面的网络请求
 func (v *View) OnLoadUrlBegin(callback OnLoadUrlBeginCallback) (stop func()) {
 
 	v._onLoadUrlBegin.Register.Do(func() {
