@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -43,21 +44,21 @@ func main() {
 			view.CallJsFunc("func_1", "张三", 18)
 
 			// 等待返回值
-			resp2, err := view.CallJsFunc("func_2").Wait()
+			resp2, err := view.CallJsFunc("func_2").Await(context.TODO())
 			if err != nil {
 				fmt.Printf("call js func_2 error: %s\n", err)
 				return
 			}
-			result2 := (resp2).(string) // 断言为字符串
+			result2 := (*resp2).(string) // 断言为字符串
 			fmt.Printf("func_2 result is %s\n", result2)
 
 			//获取func_3返回的非基本数据类型
-			resp3, err := view.CallJsFunc("func_3").Wait()
+			resp3, err := view.CallJsFunc("func_3").Await(context.TODO())
 			if err != nil {
 				fmt.Printf("call js func_3 error: %s\n", err)
 				return
 			}
-			result3 := (resp3).(map[string]interface{}) // wait for result
+			result3 := (*resp3).(map[string]interface{}) // wait for result
 			fmt.Printf("func_3 result is %v\n", result3)
 		}()
 	})
