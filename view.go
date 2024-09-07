@@ -11,8 +11,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/chebyrash/promise"
 	"github.com/epkgs/blink/internal/log"
-	"github.com/epkgs/blink/pkg/async"
 	"github.com/epkgs/blink/pkg/utils"
 )
 
@@ -418,7 +418,7 @@ func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string) JsValue {
 	return JsValue(r1)
 }
 
-func (v *View) CallJsFunc(funcName string, args ...interface{}) async.InProgress[interface{}] {
+func (v *View) CallJsFunc(funcName string, args ...interface{}) *promise.Promise[any] {
 
 	return v.mb.IPC.CallJsFunc(v, funcName, args...)
 }

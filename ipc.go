@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chebyrash/promise"
 	"github.com/epkgs/blink/internal/cast"
 	"github.com/epkgs/blink/internal/log"
-	"github.com/epkgs/blink/pkg/async"
 	"github.com/epkgs/blink/pkg/utils"
 )
 
@@ -419,7 +419,7 @@ func (ipc *IPC) registerJSHandler() {
 	})
 }
 
-func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) async.InProgress[interface{}] {
+func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) *promise.Promise[any] {
 
 	newArgs := make([]interface{}, 0, len(args)+1)
 	newArgs = append(newArgs, funcName)
@@ -433,23 +433,26 @@ func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) asy
 		Args:    newArgs,
 	}
 
-	resultChan := make(chan interface{}, 1) // result 管道
-	errChan := make(chan error, 1)          // 错误管道
+	resolve := func(any) {}
+	reject := func(error) {}
+	p := promise.New(func(resolv func(any), rej func(error)) {
+		resolve = resolv
+		reject = rej
+	})
 
-	progress := async.New(10*time.Second, func() (interface{}, error) {
-		return <-resultChan, <-errChan
-	}).Start()
-
-	cb := func(result interface{}, err error) {
-		resultChan <- result
-		errChan <- err
+	cb := func(result any, err error) {
+		if err != nil {
+			reject(err)
+		} else {
+			resolve(result)
+		}
 	}
 
 	ipc.pendding.Add(id, cb)
 
 	sentMsgToView(view, msg)
 
-	return progress
+	return p
 }
 
 func sentMsgToView(view *View, msg IPCMessage) {

@@ -103,7 +103,8 @@
             const res = await handler(...args); // 支持 promise
             toGO(newMsg({ replyId: id, channel, args, result: res })) // 返回结果
         } catch (err) {
-            toGO(newMsg({ replyId: id, channel, args, error: err })) // 返回结果
+            const errMsg = err.message || err.msg || JSON.stringify(err)
+            toGO(newMsg({ replyId: id, channel, args, error: errMsg })) // 返回结果
         }
     }
 
