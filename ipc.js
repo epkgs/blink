@@ -67,7 +67,7 @@
         }
         return randomString;
     }
-    function newMsg({ id = '', replyId = '', channel = '', args = [], result = null, error = '' }) {
+    function newMsg({ id = '', replyId = '', channel = '', args = [], result = undefined, error = undefined }) {
         return { id, replyId, channel, args, result, error }
     }
 
@@ -100,10 +100,16 @@
         if (!handler) return;
         if (!id) return; // ! 如果 ID 为空，则无须回复
         try {
-            const res = await handler(...args); // 支持 promise
+            const res = await Promise.resolve(handler(...args)); // 支持 promise
             toGO(newMsg({ replyId: id, channel, args, result: res })) // 返回结果
         } catch (err) {
-            const errMsg = err.message || err.msg || JSON.stringify(err)
+            // 确保 errMsg 总是一个字符串
+            let errMsg = '';
+            if (typeof err === 'object' && err !== null) {
+                errMsg = err.message || err.msg || JSON.stringify(err);
+            } else {
+                errMsg = String(err);
+            }
             toGO(newMsg({ replyId: id, channel, args, error: errMsg })) // 返回结果
         }
     }

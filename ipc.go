@@ -94,12 +94,12 @@ type IPC struct {
 }
 
 type IPCMessage struct {
-	ID      string        `json:"id"`      // 消息 ID
-	ReplyId string        `json:"replyId"` // 回复ID
-	Channel string        `json:"channel"` // 通道
-	Args    []interface{} `json:"args"`    // 参数
-	Result  interface{}   `json:"result"`  // 返回值，当有回复ID时，此字段有效
-	Error   string        `json:"error"`   // 是否错误，当有回复ID时，此字段有效
+	ID      string        `json:"id"`               // 消息 ID
+	ReplyId string        `json:"replyId"`          // 回复ID
+	Channel string        `json:"channel"`          // 通道
+	Args    []interface{} `json:"args"`             // 参数
+	Result  interface{}   `json:"result,omitempty"` // 返回值，当有回复ID时，此字段有效
+	Error   string        `json:"error,omitempty"`  // 是否错误，当有回复ID时，此字段有效
 }
 
 func newIPC(mb *Blink) *IPC {
