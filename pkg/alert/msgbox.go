@@ -21,8 +21,7 @@ func pick(defaultTitle string, titleOrContent string, contents ...string) (title
 }
 
 func Alert(flag uint32, title string, content string) int32 {
-	cwd := win.GetForegroundWindow()
-	return win.MessageBox(cwd, strToWcharPtr(content), strToWcharPtr(title), flag|win.MB_OK|win.MB_SYSTEMMODAL)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), flag|win.MB_OK|win.MB_SYSTEMMODAL)
 }
 
 func Error(titleOrContent string, contents ...string) int32 {
