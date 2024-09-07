@@ -22,20 +22,20 @@ func pick(defaultTitle string, titleOrContent string, contents ...string) (title
 
 func Alert(flag uint32, titleOrContent string, contents ...string) int32 {
 	title, content := pick("注意", titleOrContent, contents...)
-	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), flag|win.MB_OK|win.MB_TOPMOST)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), flag|win.MB_OK|win.MB_SYSTEMMODAL)
 }
 
 func Error(titleOrContent string, contents ...string) int32 {
 	title, content := pick("错误", titleOrContent, contents...)
-	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONERROR|win.MB_OK|win.MB_TOPMOST)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONERROR|win.MB_OK|win.MB_SYSTEMMODAL)
 }
 
 func Info(titleOrContent string, contents ...string) int32 {
 	title, content := pick("提示", titleOrContent, contents...)
-	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONINFORMATION|win.MB_OK|win.MB_TOPMOST)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONINFORMATION|win.MB_OK|win.MB_SYSTEMMODAL)
 }
 
 func Warning(titleOrContent string, contents ...string) int32 {
 	title, content := pick("警告", titleOrContent, contents...)
-	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONWARNING|win.MB_OK|win.MB_TOPMOST)
+	return win.MessageBox(0, strToWcharPtr(content), strToWcharPtr(title), win.MB_ICONWARNING|win.MB_OK|win.MB_SYSTEMMODAL)
 }
