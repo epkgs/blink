@@ -1,6 +1,7 @@
 package blink
 
 import (
+	"context"
 	"net/http"
 	"runtime"
 	"sync"
@@ -60,10 +61,12 @@ type Blink struct {
 
 	threadID uint32 // 调用 mb api 的线程 id
 
-	quit     chan struct{}
 	jobs     chan BlinkJob
 	calls    *queue.Queue[CallFuncJob]
 	jobLoops []func()
+
+	Ctx       context.Context
+	CancelCtx context.CancelFunc
 }
 
 func NewApp(setups ...func(*Config)) *Blink {
@@ -82,6 +85,8 @@ func NewApp(setups ...func(*Config)) *Blink {
 		panic(err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	blink := &Blink{
 		Config:   config,
 		Resource: resource.New(),
@@ -92,10 +97,12 @@ func NewApp(setups ...func(*Config)) *Blink {
 		views:   make(map[WkeHandle]*View),
 		windows: make(map[WkeHandle]*Window),
 
-		quit:     make(chan struct{}),
 		jobs:     make(chan BlinkJob, 20),
 		calls:    queue.NewQueue[CallFuncJob](999),
 		jobLoops: []func(){},
+
+		Ctx:       ctx,
+		CancelCtx: cancel,
 	}
 
 	// 启动任务循环
@@ -119,16 +126,12 @@ func (mb *Blink) CloseAll() {
 }
 
 func (mb *Blink) Exit() {
-	mb.Free()
-}
-
-func (mb *Blink) Free() {
 
 	mb.CloseAll()
 
-	mb.finalize()
+	mb.CancelCtx()
 
-	close(mb.quit) // quit 退出任务循环，须等待上面任务完成才能退出任务循环
+	mb.finalize()
 
 	_ = mb.dll.Release()
 	mb = nil
@@ -190,9 +193,11 @@ func (mb *Blink) LoopWinMessage() {
 
 func (mb *Blink) KeepRunning() {
 
+	wait := make(chan struct{})
+
 	mb.LoopWinMessage()
 
-	<-mb.quit
+	<-wait
 }
 
 func (mb *Blink) findProc(name string) *windows.Proc {
@@ -273,7 +278,7 @@ func (mb *Blink) AddLoop(job ...func()) *Blink {
 
 func (mb *Blink) loopJobLoops() {
 
-	utils.Go(func() {
+	utils.GoWithContext(mb.Ctx, func() {
 
 		runtime.LockOSThread() // ! 由于 miniblink 的线程限制，需要锁定线程
 
@@ -281,11 +286,8 @@ func (mb *Blink) loopJobLoops() {
 
 		for {
 			select {
-			// 退出信号
-			case <-mb.quit:
-				return
 
-				// 任务
+			// 任务
 			case bj := <-mb.jobs:
 				bj.job()
 				close(bj.done)

@@ -1,6 +1,7 @@
 package blink
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -32,12 +33,14 @@ type ipcHandler func(cb resultCallback, args ...interface{})
 
 // 封装 ipcPedding, 为 Get/Add/Del 提供锁保护
 type ipcPendding struct {
+	ctx       context.Context
 	mu        *sync.Mutex
 	callbacks map[string]resultCallback
 }
 
-func newIPCPendding() *ipcPendding {
+func newIPCPendding(ctx context.Context) *ipcPendding {
 	return &ipcPendding{
+		ctx:       ctx,
 		mu:        &sync.Mutex{},
 		callbacks: make(map[string]resultCallback),
 	}
@@ -45,14 +48,14 @@ func newIPCPendding() *ipcPendding {
 
 func (p *ipcPendding) Add(id string, cb resultCallback) {
 	// 异步，避免阻塞
-	utils.Go(func() {
+	utils.GoWithContext(p.ctx, func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		p.callbacks[id] = cb
 	}, nil)
 
 	// 超时处理
-	utils.Go(func() {
+	utils.GoWithContext(p.ctx, func() {
 
 		time.Sleep(10 * time.Second)
 
@@ -73,7 +76,7 @@ func (p *ipcPendding) Add(id string, cb resultCallback) {
 
 func (p *ipcPendding) Del(id string) {
 	// 异步，避免阻塞
-	utils.Go(func() {
+	utils.GoWithContext(p.ctx, func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		delete(p.callbacks, id)
@@ -107,8 +110,9 @@ func newIPC(mb *Blink) *IPC {
 		mb: mb,
 
 		handlers: make(map[string]ipcHandler),
-		pendding: newIPCPendding(),
 	}
+
+	ipc.pendding = newIPCPendding(mb.Ctx)
 
 	ipc.registerBootScript()
 	ipc.registerJS2GO()
@@ -218,7 +222,7 @@ func (ipc *IPC) Handle(channel string, handler Callback) {
 		}
 
 		// 异步处理 handler
-		utils.Go(func() {
+		utils.GoWithContext(ipc.mb.Ctx, func() {
 			defer func() {
 				if r := recover(); r != nil {
 					if err, ok := r.(error); ok {

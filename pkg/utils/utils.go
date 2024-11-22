@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"context"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -55,5 +57,46 @@ func Go(f func(), handleError func(error)) {
 
 		f()
 
+	}()
+}
+
+func GoWithContext(ctx context.Context, f func(), handleError func(error)) {
+	go func() {
+
+		defer func() {
+			if r := recover(); r != nil {
+
+				if err, ok := r.(error); ok {
+					if handleError != nil {
+						handleError(err)
+						return
+					}
+				}
+
+				log.Printf("panic by goroutine: %v\n", r)
+			}
+		}()
+
+		var once sync.Once
+		done := false
+
+		// 不断循环，检查 ctx 是否已经结束
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// 保证仅执行一次
+				once.Do(func() {
+					f()
+					done = true
+				})
+
+				// 判断是否已经执行完毕，执行完毕跳出整个协程
+				if done {
+					return
+				}
+			}
+		}
 	}()
 }
