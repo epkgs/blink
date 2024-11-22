@@ -193,11 +193,9 @@ func (mb *Blink) LoopWinMessage() {
 
 func (mb *Blink) KeepRunning() {
 
-	wait := make(chan struct{})
-
 	mb.LoopWinMessage()
 
-	<-wait
+	<-mb.Ctx.Done()
 }
 
 func (mb *Blink) findProc(name string) *windows.Proc {
