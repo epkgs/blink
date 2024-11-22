@@ -74,9 +74,12 @@
         <legend>带参数的</legend>
         <ul>
             <li>JS定义</li>
-            <li>function func_1(name, age) {</li>
-            <li class="sj-1">console.log("name=" + name + ", age=" + age);</li>
-            <li>}</li>
+            <li>
+                <pre>
+function func_1(name, age) {
+    console.log("name=" + name + ", age=" + age)
+}</pre>
+            </li>
         </ul>
         <ol>
             <li>Go调用</li>
@@ -87,29 +90,53 @@
         <legend>基础数据类型返回值</legend>
         <ul>
             <li>JS定义</li>
-            <li>function func_2() {</li>
-            <li class="sj-1">return "李四";</li>
-            <li>}</li>
+            <li>
+                <pre>
+function func_2() {
+    return "李四";
+}</pre>
+            </li>
         </ul>
         <ol>
-            <li>resp2 := view.CallJsFunc("func_2")</li>
-            <li>result2 := (<-resp2).(string) // wait for result</li>
-            <li>fmt.Printf("func_2 result is %s", result2)</li>
+            <li>Go调用</li>
+            <li>
+                <pre>
+// 等待返回值
+resp2, err := view.CallJsFunc("func_2").Await(context.TODO())
+if err != nil {
+    fmt.Printf("call js func_2 error: %s\n", err)
+    return
+}
+result2 := (*resp2).(string) // 断言为字符串
+fmt.Printf("func_2 result is %s\n", result2)</pre>
+            </li>
         </ol>
+
     </fieldset>
     <fieldset>
         <legend>非基础类型返回值</legend>
         <ul>
             <li>JS定义</li>
-            <li>function func_3() {</li>
-            <li class="sj-1">return { name: "张三", age: 18 };</li>
-            <li>}</li>
+            <li>
+                <pre>
+function func_3() {
+    return { name: "张三", age: 18 };
+}</pre>
+            </li>
         </ul>
         <ol>
             <li>Go调用</li>
-            <li>resp3 := view.CallJsFunc("func_3")</li>
-            <li>result3 := (<-resp3).(map[string]interface{}) // wait for result</li>
-            <li>fmt.Printf("func_3 result is %v", result3)</li>
+            <li>
+                <pre>
+//获取func_3返回的非基本数据类型
+resp3, err := view.CallJsFunc("func_3").Await(context.TODO())
+if err != nil {
+    fmt.Printf("call js func_3 error: %s\n", err)
+    return
+}
+result3 := (*resp3).(map[string]interface{}) // wait for result
+fmt.Printf("func_3 result is %v\n", result3)</pre>
+            </li>
         </ol>
     </fieldset>
 </body>
