@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"log"
 	"math/rand"
 	"time"
 	"unsafe"
@@ -33,4 +34,26 @@ func RandString(n int) string {
 		remain--
 	}
 	return *(*string)(unsafe.Pointer(&b))
+}
+
+func Go(f func(), handleError func(error)) {
+	go func() {
+
+		defer func() {
+			if r := recover(); r != nil {
+
+				if err, ok := r.(error); ok {
+					if handleError != nil {
+						handleError(err)
+						return
+					}
+				}
+
+				log.Printf("panic by goroutine: %v", r)
+			}
+		}()
+
+		f()
+
+	}()
 }

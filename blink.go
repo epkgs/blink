@@ -272,7 +272,8 @@ func (mb *Blink) AddLoop(job ...func()) *Blink {
 }
 
 func (mb *Blink) loopJobLoops() {
-	go func() {
+
+	utils.Go(func() {
 
 		runtime.LockOSThread() // ! 由于 miniblink 的线程限制，需要锁定线程
 
@@ -308,7 +309,7 @@ func (mb *Blink) loopJobLoops() {
 
 			}
 		}
-	}()
+	}, nil)
 }
 
 func (mb *Blink) doCallFunc(name string, args ...uintptr) (r1 uintptr, r2 uintptr, err error) {

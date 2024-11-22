@@ -45,14 +45,14 @@ func newIPCPendding() *ipcPendding {
 
 func (p *ipcPendding) Add(id string, cb resultCallback) {
 	// 异步，避免阻塞
-	go func() {
+	utils.Go(func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		p.callbacks[id] = cb
-	}()
+	}, nil)
 
 	// 超时处理
-	go func() {
+	utils.Go(func() {
 
 		time.Sleep(10 * time.Second)
 
@@ -68,16 +68,16 @@ func (p *ipcPendding) Add(id string, cb resultCallback) {
 		delete(p.callbacks, id) // 删除等待结果的callback
 
 		cb(nil, errors.New("等待 JS Handler 处理结果超时"))
-	}()
+	}, nil)
 }
 
 func (p *ipcPendding) Del(id string) {
 	// 异步，避免阻塞
-	go func() {
+	utils.Go(func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		delete(p.callbacks, id)
-	}()
+	}, nil)
 }
 
 func (p *ipcPendding) Get(id string) (resultCallback, bool) {
@@ -218,8 +218,7 @@ func (ipc *IPC) Handle(channel string, handler Callback) {
 		}
 
 		// 异步处理 handler
-		go func() {
-
+		utils.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					if err, ok := r.(error); ok {
@@ -273,7 +272,7 @@ func (ipc *IPC) Handle(channel string, handler Callback) {
 				}
 			}
 
-		}()
+		}, nil)
 	}
 }
 
