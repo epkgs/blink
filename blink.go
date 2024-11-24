@@ -276,7 +276,7 @@ func (mb *Blink) AddLoop(job ...func()) *Blink {
 
 func (mb *Blink) loopJobLoops() {
 
-	utils.GoWithContext(mb.Ctx, func() {
+	utils.Go(func() {
 
 		runtime.LockOSThread() // ! 由于 miniblink 的线程限制，需要锁定线程
 
@@ -285,12 +285,15 @@ func (mb *Blink) loopJobLoops() {
 		for {
 			select {
 
+			case <-mb.Ctx.Done():
+				return
+
 			// 任务
 			case bj := <-mb.jobs:
 				bj.job()
 				close(bj.done)
 
-				// 调用 mb api 接口的异步任务
+			// 调用 mb api 接口的异步任务
 			case ch := <-mb.calls.Chan():
 				job := ch.First()
 				r1, r2, err := mb.doCallFunc(job.funcName, job.args...)

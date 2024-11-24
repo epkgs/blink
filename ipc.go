@@ -48,14 +48,14 @@ func newIPCPendding(ctx context.Context) *ipcPendding {
 
 func (p *ipcPendding) Add(id string, cb resultCallback) {
 	// 异步，避免阻塞
-	utils.GoWithContext(p.ctx, func() {
+	utils.Go(func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		p.callbacks[id] = cb
 	}, nil)
 
 	// 超时处理
-	utils.GoWithContext(p.ctx, func() {
+	utils.Go(func() {
 
 		time.Sleep(10 * time.Second)
 
@@ -76,7 +76,7 @@ func (p *ipcPendding) Add(id string, cb resultCallback) {
 
 func (p *ipcPendding) Del(id string) {
 	// 异步，避免阻塞
-	utils.GoWithContext(p.ctx, func() {
+	utils.Go(func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		delete(p.callbacks, id)
@@ -222,15 +222,7 @@ func (ipc *IPC) Handle(channel string, handler Callback) {
 		}
 
 		// 异步处理 handler
-		utils.GoWithContext(ipc.mb.Ctx, func() {
-			defer func() {
-				if r := recover(); r != nil {
-					if err, ok := r.(error); ok {
-						log.Error("panic by ipc handler[ %v ]: %v", channel, err)
-						cb(nil, err)
-					}
-				}
-			}()
+		utils.Go(func() {
 
 			select {
 			case <-time.After(10 * time.Second):
@@ -276,7 +268,10 @@ func (ipc *IPC) Handle(channel string, handler Callback) {
 				}
 			}
 
-		}, nil)
+		}, func(err error) {
+			log.Error("panic by ipc handler[ %v ]: %v", channel, err)
+			cb(nil, err)
+		})
 	}
 }
 

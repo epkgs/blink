@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -60,45 +59,31 @@ func Go(f func(), handleError func(error)) {
 	}()
 }
 
-func GoWithContext(ctx context.Context, f func(), handleError func(error)) {
+func GoLoop(ctx context.Context, f func(), handleError func(error)) {
 	go func() {
 
-		errChan := make(chan error)
+		defer func() {
+			if r := recover(); r != nil {
 
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-
-					if err, ok := r.(error); ok {
-						errChan <- err
-					} else {
-						errChan <- fmt.Errorf("%v", r)
+				if err, ok := r.(error); ok {
+					if handleError != nil {
+						handleError(err)
+						return
 					}
-				} else {
-					errChan <- nil
 				}
-			}()
 
-			// 执行函数
-			f()
-
+				log.Printf("panic by goroutine: %v", r)
+			}
 		}()
 
-		// 不断循环，检查 ctx 是否已经结束
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case err := <-errChan:
-				if err != nil {
-					if handleError != nil {
-						handleError(err)
-					} else {
-						log.Printf("panic by goroutine: %v", err)
-					}
-				}
-				return
+			default:
+				f()
 			}
 		}
+
 	}()
 }
