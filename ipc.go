@@ -417,7 +417,7 @@ func (ipc *IPC) registerJSHandler() {
 	})
 }
 
-func (ipc *IPC) CallJsFunc(view *View, funcName string, args ...interface{}) *promise.Promise[any] {
+func (ipc *IPC) RunJsFunc(view *View, funcName string, args ...interface{}) *promise.Promise[any] {
 
 	newArgs := make([]interface{}, 0, len(args)+1)
 	newArgs = append(newArgs, funcName)
@@ -461,5 +461,5 @@ func sentMsgToView(view *View, msg IPCMessage) {
 
 	log.Debug("GO -> JS: %s", msgTxt)
 
-	view.RunJS(script)
+	view.RunJs(script)
 }

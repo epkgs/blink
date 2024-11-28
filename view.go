@@ -148,7 +148,7 @@ func (v *View) injectBootScripts() {
 	}
 
 	v.OnDidCreateScriptContext(func(frame WkeWebFrameHandle, context uintptr, exGroup, worldId int) {
-		v.RunJS(script)
+		v.RunJs(script)
 	})
 }
 
@@ -404,7 +404,7 @@ func (v *View) DoWhenDidCreateScriptContext(callback func()) {
 }
 
 // 仅作用于 主frame，会自动判断是否 document ready
-func (v *View) RunJS(script string) JsValue {
+func (v *View) RunJs(script string) JsValue {
 	r1, _, _ := v.mb.CallFunc("wkeRunJS", uintptr(v.Hwnd), StringToPtr(script))
 
 	return JsValue(r1)
@@ -418,9 +418,9 @@ func (v *View) RunJsByFrame(frame WkeWebFrameHandle, script string) JsValue {
 	return JsValue(r1)
 }
 
-func (v *View) CallJsFunc(funcName string, args ...interface{}) *promise.Promise[any] {
+func (v *View) RunJsFunc(funcName string, args ...interface{}) *promise.Promise[any] {
 
-	return v.mb.IPC.CallJsFunc(v, funcName, args...)
+	return v.mb.IPC.RunJsFunc(v, funcName, args...)
 }
 
 func (v *View) OnDidCreateScriptContext(callback OnDidCreateScriptContextCallback) (stop func()) {
@@ -543,7 +543,7 @@ func (v *View) AddEventListener(selector, eventType string, callback func(), pre
 
 	v._onDomEvent.Callbacks[key] = callback // 增加 callback
 
-	v.RunJS(script)
+	v.RunJs(script)
 
 	return func() {
 		delete(v._onDomEvent.Callbacks, key)

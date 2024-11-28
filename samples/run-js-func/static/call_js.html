@@ -83,7 +83,7 @@ function func_1(name, age) {
         </ul>
         <ol>
             <li>Go调用</li>
-            <li>view.CallJsFunc("func_1", "张三", 18)</li>
+            <li>view.RunJsFunc("func_1", "张三", 18)</li>
         </ol>
     </fieldset>
     <fieldset>
@@ -102,7 +102,7 @@ function func_2() {
             <li>
                 <pre>
 // 等待返回值
-resp2, err := view.CallJsFunc("func_2").Await(context.TODO())
+resp2, err := view.RunJsFunc("func_2").Await(context.TODO())
 if err != nil {
     fmt.Printf("call js func_2 error: %s\n", err)
     return
@@ -129,7 +129,7 @@ function func_3() {
             <li>
                 <pre>
 //获取func_3返回的非基本数据类型
-resp3, err := view.CallJsFunc("func_3").Await(context.TODO())
+resp3, err := view.RunJsFunc("func_3").Await(context.TODO())
 if err != nil {
     fmt.Printf("call js func_3 error: %s\n", err)
     return

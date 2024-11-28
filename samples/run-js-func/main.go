@@ -41,10 +41,12 @@ func main() {
 		// 避免阻塞主线程
 		go func() {
 			// 调用func_1
-			view.CallJsFunc("func_1", "张三", 18)
+			view.RunJsFunc("func_1", "张三", 18)
+			// 或者使用 RunJs
+			view.RunJs(`func_1("张三", 18)`)
 
 			// 等待返回值
-			resp2, err := view.CallJsFunc("func_2").Await(context.TODO())
+			resp2, err := view.RunJsFunc("func_2").Await(context.TODO())
 			if err != nil {
 				fmt.Printf("call js func_2 error: %s\n", err)
 				return
@@ -53,7 +55,7 @@ func main() {
 			fmt.Printf("func_2 result is %s\n", result2)
 
 			//获取func_3返回的非基本数据类型
-			resp3, err := view.CallJsFunc("func_3").Await(context.TODO())
+			resp3, err := view.RunJsFunc("func_3").Await(context.TODO())
 			if err != nil {
 				fmt.Printf("call js func_3 error: %s\n", err)
 				return
